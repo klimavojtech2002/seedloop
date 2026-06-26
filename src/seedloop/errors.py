@@ -1,0 +1,27 @@
+"""Exceptions seedloop raises.
+
+One specific exception per failure mode; nothing is swallowed. The hierarchy is rooted at
+``SeedloopError`` so everything seedloop raises can be caught with a single class.
+"""
+
+from __future__ import annotations
+
+
+class SeedloopError(Exception):
+    """Base class for every error seedloop raises."""
+
+
+class BoundaryError(SeedloopError):
+    """A simulated run reached outside the determinism boundary.
+
+    Real threads, ``run_in_executor``, subprocesses, real sockets, and cross-thread wakeups
+    cannot be made deterministic, so they are rejected rather than run silently (``docs/scope.md``).
+    """
+
+
+class DeadlockError(SeedloopError):
+    """The run cannot progress and nothing is scheduled to wake it.
+
+    A real ``asyncio`` program would hang here; a simulated run raises instead of spinning, so
+    the deadlock is a visible failure tied to the seed that produced it.
+    """

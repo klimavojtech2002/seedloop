@@ -14,8 +14,10 @@ uses, accepted by both `asyncio.Runner(loop_factory=...)` and `asyncio.run(coro,
 (verified present on 3.13). The user calls `asyncio.run`/`await` as normal; the factory swaps in the
 deterministic loop underneath, so user code never sees the change.
 
-`asyncio.AbstractEventLoop` declares dozens of methods (≈55 public on 3.13), most of them real-I/O entry
-points. seedloop implements only the slice that `Task` and coroutine execution actually drive:
+In practice seedloop subclasses `asyncio.BaseEventLoop` and overrides only `_run_once` to drop the I/O
+poll (ADR-0013), inheriting asyncio's tested scheduling, `run_until_complete`, and Task/Future machinery
+unchanged. `BaseEventLoop` declares dozens of methods (≈55 public on 3.13), most of them real-I/O entry
+points; the effective surface that works is the slice `Task` and coroutine execution actually drive:
 
 - **Scheduling:** `call_soon`, `call_soon_threadsafe` (rejected — see boundary), `call_later`, `call_at`,
   `time`.
@@ -24,11 +26,13 @@ points. seedloop implements only the slice that `Task` and coroutine execution a
 - **Exceptions:** `call_exception_handler`, `set_exception_handler`, `default_exception_handler`,
   `get_debug`.
 
-The real-I/O surface — `sock_*`, `getaddrinfo`/`getnameinfo`, `create_connection`/`create_server`,
-`run_in_executor`, subprocess and signal hooks, `add_reader`/`add_writer` — is **not** implemented as
-working transport. These are the boundary: calling one inside a run raises `BoundaryError` (ADR-0002),
-because honouring it would mean real, nondeterministic I/O. This is the whole reason a custom loop is
-tractable here: we implement the small cooperative core, not a real reactor.
+The real-I/O surface — `run_in_executor`/`call_soon_threadsafe` (threads), `sock_*` and
+`add_reader`/`add_writer` (sockets), `getaddrinfo`/`getnameinfo` (DNS),
+`create_connection`/`create_server`/`create_datagram_endpoint` (transports), subprocess and signal
+hooks — is **not** implemented as working transport. The entry points that could otherwise act are
+overridden to raise `BoundaryError` (ADR-0002); the rest inherit `BaseEventLoop`'s `NotImplementedError`.
+Either way nothing real runs — which is the whole reason a custom loop is tractable here: we implement
+the small cooperative core, not a real reactor.
 
 ## Two structures, and what seedloop adds
 
@@ -60,22 +64,23 @@ timer or an I/O event. seedloop has no I/O and no real waiting, so the poll beco
 def _run_once(self):
     # 1. Run every callback currently ready, in FIFO (registration) order.
     for _ in range(len(self._ready)):
-        self._ready.popleft()()              # may schedule more work, run next step
+        self._ready.popleft()._run()         # may schedule more work, run next step
 
     # 2. Ready queue drained. If timers remain, autojump the clock to the
     #    earliest deadline and promote every timer now due.
     if not self._ready:
-        if self._timers:
-            self._clock = self._timers[0].when          # virtual time jumps; nobody sleeps
-            while self._timers and self._timers[0].when <= self._clock:
-                self._ready.append(heappop(self._timers).callback)
-        else:
-            self._quiescent = True            # nothing ready, no timers
+        if self._scheduled:
+            self._clock = self._scheduled[0]._when      # virtual time jumps; nobody sleeps
+            while self._scheduled and self._scheduled[0]._when <= self._clock:
+                self._ready.append(heappop(self._scheduled))
+        elif not self._stopping:
+            raise DeadlockError(...)          # nothing ready, no timers, run not complete
 ```
 
-The run ends when the top-level coroutine completes. If `_quiescent` is reached with tasks still
-awaiting and nothing scheduled to wake them, that is a **deadlock in the simulated world** — seedloop
-raises rather than hanging, because a real `asyncio` program would hang there and a test must surface it.
+The run ends when the top-level coroutine completes. When the ready queue and the timer heap are both
+empty while tasks are still awaiting, nothing can ever wake them — a **deadlock in the simulated
+world** — and seedloop raises rather than hanging, because a real `asyncio` program would hang there and
+a test must surface it.
 
 This is the autojump of ADR-0005 / `trio`'s `MockClock`: time only moves when all work is blocked, and
 then it moves straight to the next scheduled event. A 10-second `sleep` is a timer at `now+10`; when the
