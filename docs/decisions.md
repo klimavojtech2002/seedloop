@@ -288,6 +288,35 @@ instant runs, exactly as the roadmap frames the phases.
 
 ---
 
+## ADR-0013 — Subclass `BaseEventLoop`; replace only the `select()` seam
+
+**Status:** Accepted
+
+**Context.** The deterministic loop could be written from scratch against `AbstractEventLoop`, or built
+by subclassing `asyncio.BaseEventLoop` and overriding the parts that touch I/O. asyncio's scheduling
+core — the `call_soon` FIFO ready queue, `run_until_complete`, Task/Future integration, and the
+running-loop and async-generator bookkeeping — is already deterministic and is the same code every
+asyncio program runs; the only nondeterministic seam is the I/O poll inside `_run_once`
+(`selector.select()`).
+
+**Decision.** seedloop subclasses `BaseEventLoop` and overrides only `_run_once` to drop the poll (plus
+`time()`, and inert `_process_events`/`_write_to_self`). The real-I/O entry points — `run_in_executor`,
+`sock_*`, `getaddrinfo`, `add_reader`/`add_writer`, `create_connection`/`create_server`,
+`call_soon_threadsafe` — are overridden to raise `BoundaryError`. `BaseEventLoop`, unlike
+`BaseSelectorEventLoop`, creates no selector and no self-pipe, so no real socket exists in the loop.
+
+**Consequences.**
+- The scheduling semantics are CPython's own, tested semantics — the premise of the whole project
+  ("asyncio's scheduling is already deterministic; we replace one seam"). Reimplementing them from
+  scratch would risk diverging from asyncio and weakening the faithful-loop claim.
+- The effective surface is the scheduling slice; the I/O surface raises — matching `scope.md` by
+  construction.
+- Trade-off: overriding `_run_once` touches `BaseEventLoop` private state (`_ready`, `_scheduled`,
+  `_stopping`) that the type stubs do not expose, so a few localized `# type: ignore[attr-defined]` are
+  needed — we are a `BaseEventLoop` subclass mirroring its own `_run_once`.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the
