@@ -1,0 +1,17 @@
+# Normalize line endings: LF in the repository for all text, regardless of the OS it is edited on.
+* text=auto eol=lf
+
+# Always LF for these, even on Windows checkouts.
+*.py   text eol=lf
+*.sh   text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binary assets are never normalized.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.gz   binary
+*.pdf  binary
