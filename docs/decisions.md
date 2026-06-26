@@ -311,9 +311,31 @@ asyncio program runs; the only nondeterministic seam is the I/O poll inside `_ru
   scratch would risk diverging from asyncio and weakening the faithful-loop claim.
 - The effective surface is the scheduling slice; the I/O surface raises — matching `scope.md` by
   construction.
-- Trade-off: overriding `_run_once` touches `BaseEventLoop` private state (`_ready`, `_scheduled`,
-  `_stopping`) that the type stubs do not expose, so a few localized `# type: ignore[attr-defined]` are
-  needed — we are a `BaseEventLoop` subclass mirroring its own `_run_once`.
+- Trade-off: the loop touches `BaseEventLoop` internals the type stubs do not expose — `_check_closed`,
+  `_ready`, and `_stopping` — so a few localized `# type: ignore[attr-defined]` are needed; we are a
+  `BaseEventLoop` subclass mirroring its own `_run_once`.
+
+---
+
+## ADR-0014 — `pytest-timeout` for hang-safe tests
+
+**Status:** Accepted
+
+**Context.** A bug in the event loop (a broken autojump, a missing timer promotion) can livelock a
+simulated run — a real `asyncio` program would hang there too. Under plain `pytest` a hanging test blocks
+the whole suite and CI indefinitely instead of failing. The deterministic-core slices need a real-time
+safety net so a hang regression fails fast.
+
+**Decision.** Add `pytest-timeout` as a **dev-only** dependency with a 30-second per-test cap
+(`[tool.pytest.ini_options] timeout = 30`). It is test infrastructure, not a runtime dependency; the
+shipped package still has zero third-party dependencies.
+
+**Consequences.**
+- A hang becomes a fast, visible test failure instead of an indefinite block (verified: a planted
+  autojump bug now trips the cap).
+- No runtime impact — `pytest-timeout` is in the `dev` extra only.
+- Trade-off: a legitimately slow test would trip the cap; a non-issue here, since the whole suite runs in
+  virtual time and finishes in milliseconds.
 
 ---
 

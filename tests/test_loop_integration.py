@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from seedloop._loop import DeterministicLoop
 
 _EXPECTED = [("a", 0), ("b", 0), ("a", 1), ("b", 1), ("a", 2), ("b", 2)]
@@ -63,9 +61,8 @@ def test_cancellation_propagates_cleanly() -> None:
     assert asyncio.run(scenario(), loop_factory=DeterministicLoop) == "cancelled"
 
 
-def test_scheduled_but_unfired_timer_does_not_block_completion() -> None:
-    # call_later/wait_for may schedule a timer; if the run completes before it must fire, the
-    # virtual clock (slice 0110) is not needed.
+def test_wait_for_around_fast_body_returns() -> None:
+    # wait_for schedules a timeout timer; the body completes first, the timer is cancelled.
     async def scenario() -> int:
         _assert_seedloop_running()
 
@@ -76,17 +73,3 @@ def test_scheduled_but_unfired_timer_does_not_block_completion() -> None:
         return await asyncio.wait_for(fast(), timeout=5)
 
     assert asyncio.run(scenario(), loop_factory=DeterministicLoop) == 7
-
-
-def test_timer_that_must_fire_is_not_yet_supported() -> None:
-    # A real sleep with nothing else to do must advance the virtual clock — that is slice 0110.
-    loop = DeterministicLoop()
-
-    async def scenario() -> None:
-        await asyncio.sleep(0.1)
-
-    try:
-        with pytest.raises(NotImplementedError):
-            loop.run_until_complete(scenario())
-    finally:
-        loop.close()
