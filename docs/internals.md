@@ -4,8 +4,10 @@ How the deterministic core is built, in enough detail to implement it and to def
 behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *why* of each
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
-Nothing here is built yet. The load-bearing CPython facts below were checked against the target
-interpreter during design (CPython 3.13); where a claim depends on a version, it says so.
+The Phase-1 core described here — the deterministic loop, the virtual clock, and autojump — is
+implemented and tested; the network, fault, entropy, and hash-seed sections are still design. The
+load-bearing CPython facts below were checked against the target interpreter (CPython 3.13); where a
+claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -36,20 +38,20 @@ the small cooperative core, not a real reactor.
 
 ## Two structures, and what seedloop adds
 
-CPython's loop already uses the two structures seedloop needs; seedloop keeps them and adds a seeded
-ordering to each:
+seedloop reuses CPython's ready queue and runs its own timer heap:
 
-- **Ready queue** — a `collections.deque`; `call_soon` appends, the step drains it left-to-right
-  (`popleft`), so callbacks run in registration order. seedloop **preserves** this order: `asyncio`
-  documents `call_soon` as FIFO and correct code may rely on it, so reordering it would manufacture
-  failures from code that is in fact correct (ADR-0012). Interleavings are explored through *when* tasks
-  become ready — the network's seeded delivery timing — not by shuffling ready callbacks. O(1)
-  append/pop.
-- **Timer heap** — a `heapq` of entries keyed by `(when, seq)`, where `when` is the virtual deadline and
-  `seq` is a monotonic counter assigned when the timer is scheduled. CPython's `TimerHandle` orders by
-  `_when` alone, so two timers with the *same* deadline fire in whatever order the heap happens to pop —
-  not deterministic. seedloop adds the `seq` tie-break so equal-deadline timers fire in scheduling order,
-  every run. O(log n) push/pop.
+- **Ready queue** — `BaseEventLoop`'s `collections.deque`; `call_soon` appends, the step drains it
+  left-to-right (`popleft`), so callbacks run in registration order. seedloop **preserves** this order:
+  `asyncio` documents `call_soon` as FIFO and correct code may rely on it, so reordering it would
+  manufacture failures from code that is in fact correct (ADR-0012). Interleavings are explored through
+  *when* tasks become ready — the network's seeded delivery timing — not by shuffling ready callbacks.
+  O(1) append/pop.
+- **Timer heap** — seedloop's own `heapq` (`_sl_timers`) of `(when, seq, handle)` tuples ordered by
+  `(when, seq)`. CPython's `TimerHandle` orders by `_when` alone, so two timers with the *same* deadline
+  fire in whatever order the heap happens to pop — not deterministic. seedloop cannot change that
+  ordering, so it keys its own tuples: the monotonic `seq` makes equal-deadline timers fire in scheduling
+  order, every run. `call_at`/`call_later` push here, not onto `BaseEventLoop._scheduled`. O(log n)
+  push/pop.
 
 The timer tie-break is the one ordering seedloop adds. The one nondeterministic seam it must *replace*
 is the I/O poll — and that is where the seed enters: the simulated network's delivery timing decides
@@ -62,19 +64,20 @@ timer or an I/O event. seedloop has no I/O and no real waiting, so the poll beco
 
 ```
 def _run_once(self):
-    # 1. Run every callback currently ready, in FIFO (registration) order.
-    for _ in range(len(self._ready)):
-        self._ready.popleft()._run()         # may schedule more work, run next step
-
-    # 2. Ready queue drained. If timers remain, autojump the clock to the
-    #    earliest deadline and promote every timer now due.
+    # 1. When nothing is ready, jump the clock to the next live timer (autojump).
     if not self._ready:
-        if self._scheduled:
-            self._clock = self._scheduled[0]._when      # virtual time jumps; nobody sleeps
-            while self._scheduled and self._scheduled[0]._when <= self._clock:
-                self._ready.append(heappop(self._scheduled))
+        self._purge_cancelled_timers()                  # head becomes a live deadline
+        if self._sl_timers:
+            self._sl_time = max(self._sl_time, self._sl_timers[0][0])   # forward only; nobody sleeps
         elif not self._stopping:
-            raise DeadlockError(...)          # nothing ready, no timers, run not complete
+            raise DeadlockError(...)                     # blocked, no timer to wake anyone
+
+    # 2. Promote every timer now due (when <= clock) to ready, then run the batch FIFO.
+    self._fire_due_timers()
+    for _ in range(len(self._ready)):
+        handle = self._ready.popleft()
+        if not handle.cancelled():
+            handle._run()                    # callbacks scheduled here run next step
 ```
 
 The run ends when the top-level coroutine completes. When the ready queue and the timer heap are both
@@ -88,8 +91,9 @@ loop has nothing else to do it jumps there instantly.
 
 ## Virtual clock
 
-`loop.time()` returns `self._clock`, a float of simulated monotonic seconds starting at 0. `call_later(d,
-cb)` schedules a timer at `self._clock + d`; `call_at(t, cb)` at absolute virtual `t`. `asyncio.sleep`
+`loop.time()` returns `self._sl_time`, a float of simulated monotonic seconds starting at 0.
+`call_later(d, cb)` schedules a timer at `self._sl_time + d`; `call_at(t, cb)` at absolute virtual `t`.
+`asyncio.sleep`
 is built on `call_later`, so it advances virtual time without waiting. No code in a run reads the OS
 clock — `time.monotonic`/`time.time` inside a run are tripwires (ADR-0008), because a real-clock read is
 an entropy leak that would make the run depend on wall time.

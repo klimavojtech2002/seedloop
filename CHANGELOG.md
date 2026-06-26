@@ -12,3 +12,6 @@ All notable changes to this project are documented here. The format follows
 - Deterministic event loop core: a single-threaded `asyncio` loop (attached via `loop_factory`) that
   drains `call_soon` in faithful FIFO order and rejects real I/O, threads, and subprocesses, with a
   deadlock guard for a quiescent run. Foundational; the public `World`/`check`/`replay` API follows.
+- Virtual clock with autojump: `loop.time()` advances only by jumping to the next scheduled timer, so
+  `asyncio.sleep` and timeouts resolve instantly with no real waiting; equal deadlines fire in scheduling
+  order via a deterministic `(when, seq)` tie-break.

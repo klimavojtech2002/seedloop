@@ -24,7 +24,7 @@ dynamic = ["version"]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8"]
+dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2"]
 
 [tool.setuptools.dynamic]
 version = { attr = "seedloop.__version__" }
@@ -49,3 +49,6 @@ exclude = ['(^|/)(\.venv|build|dist|\.eggs)/']
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+# A simulated run can livelock on a loop bug; cap every test so a hang fails fast instead of
+# blocking CI. The suite otherwise runs in virtual time and finishes in milliseconds.
+timeout = 30

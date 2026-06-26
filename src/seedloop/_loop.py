@@ -6,54 +6,89 @@ subclasses :class:`asyncio.BaseEventLoop` and overrides only ``_run_once`` to re
 (ADR-0013): the ready queue is drained in faithful ``call_soon`` FIFO order (ADR-0012), and the
 real-I/O surface is rejected rather than run (``docs/scope.md``).
 
-In this slice time is frozen at 0: timers can be scheduled, but the loop cannot advance time to
-fire one (the virtual clock and autojump arrive in the next slice), so a run that would have to is
-rejected. ``BaseEventLoop`` (unlike ``BaseSelectorEventLoop``) creates no selector and no self-pipe,
-so no real socket exists in the loop.
+Time is virtual: ``loop.time()`` starts at 0 and never advances by waiting. When every task is
+blocked, the loop jumps the clock to the next scheduled timer (the autojump of ADR-0005), so a
+ten-second ``sleep`` resolves instantly. Timers live in a heap keyed ``(when, seq)``, so equal
+deadlines fire in scheduling order — a deterministic tie-break CPython's ``TimerHandle`` (ordered by
+deadline alone) lacks. ``BaseEventLoop`` (unlike ``BaseSelectorEventLoop``) creates no selector and
+no self-pipe, so no real socket exists in the loop.
 """
 
 from __future__ import annotations
 
 import asyncio
+import heapq
 from typing import Any, NoReturn
 
 from seedloop.errors import BoundaryError, DeadlockError
 
 
 class DeterministicLoop(asyncio.BaseEventLoop):
-    """A single-threaded ``asyncio`` loop with no real I/O and no real clock."""
+    """A single-threaded ``asyncio`` loop with no real I/O and a virtual clock."""
 
     def __init__(self) -> None:
         super().__init__()
-        # Virtual time, frozen at 0 in this slice; the clock slice advances it.
-        self._sl_time = 0.0
+        self._sl_time = 0.0  # virtual monotonic time; advanced only by the autojump
+        # Timer heap of (when, seq, handle); the monotonic seq is the deterministic tie-break,
+        # so equal deadlines fire in scheduling order.
+        self._sl_timers: list[tuple[float, int, asyncio.TimerHandle]] = []
+        self._sl_timer_seq = 0
 
     def time(self) -> float:
         return self._sl_time
 
+    def call_at(  # type: ignore[override]
+        self, when: float, callback: Any, *args: Any, context: Any = None
+    ) -> asyncio.TimerHandle:
+        self._check_closed()  # type: ignore[attr-defined]  # BaseEventLoop guard, not in the stubs
+        timer = asyncio.TimerHandle(when, callback, args, self, context)
+        heapq.heappush(self._sl_timers, (when, self._sl_timer_seq, timer))
+        self._sl_timer_seq += 1
+        return timer
+
+    def call_later(  # type: ignore[override]
+        self, delay: float, callback: Any, *args: Any, context: Any = None
+    ) -> asyncio.TimerHandle:
+        return self.call_at(self._sl_time + delay, callback, *args, context=context)
+
+    def _timer_handle_cancelled(self, handle: asyncio.TimerHandle) -> None:
+        # Cancelled timers are tombstoned and skipped when popped; no count bookkeeping needed.
+        pass
+
     def _run_once(self) -> None:
-        # Deterministic replacement for BaseEventLoop._run_once: no select(), no real I/O.
-        # call_soon order is preserved (ADR-0012); the seed will drive timing through the
-        # simulated network, not through callback order.
+        # Deterministic replacement for BaseEventLoop._run_once: no select(), no real I/O. When
+        # nothing is ready, advance virtual time to the next timer (autojump); then promote every
+        # timer now due and run the ready batch in faithful FIFO order (ADR-0012).
         ready: Any = self._ready  # type: ignore[attr-defined]  # BaseEventLoop's ready deque
         if not ready:
-            if self._scheduled:  # type: ignore[attr-defined]  # any timer (incl. 0-delay) is deferred
-                raise NotImplementedError(
-                    "firing timers (call_later / call_at) is added in the clock slice"
-                )
-            if not self._stopping:  # type: ignore[attr-defined]  # BaseEventLoop stop flag
+            self._purge_cancelled_timers()
+            if self._sl_timers:
+                self._sl_time = max(self._sl_time, self._sl_timers[0][0])  # jump forward only
+            elif not self._stopping:  # type: ignore[attr-defined]  # BaseEventLoop stop flag
                 raise DeadlockError(
-                    "the run is quiescent: every task is blocked and nothing is scheduled to "
+                    "the run is quiescent: every task is blocked and no timer is scheduled to "
                     "wake one"
                 )
-            return
-        # Run every callback ready at the start of this step, in registration order. Callbacks
-        # scheduled while the batch runs land in _ready and run on the next step (the len()
-        # bound), matching CPython.
+        self._fire_due_timers()
+        # Run the batch ready at step start in registration order; callbacks scheduled mid-batch
+        # run on the next step (the len() bound), matching CPython.
         for _ in range(len(ready)):
             handle = ready.popleft()
             if not handle.cancelled():
                 handle._run()
+
+    def _fire_due_timers(self) -> None:
+        # Promote every timer whose deadline has arrived (<= the clock) to the ready queue.
+        ready = self._ready  # type: ignore[attr-defined]
+        while self._sl_timers and self._sl_timers[0][0] <= self._sl_time:
+            handle = heapq.heappop(self._sl_timers)[2]
+            if not handle.cancelled():
+                ready.append(handle)
+
+    def _purge_cancelled_timers(self) -> None:
+        # Drop cancelled timers from the heap head so the earliest entry is a live deadline.
+        while self._sl_timers and self._sl_timers[0][2].cancelled():
+            heapq.heappop(self._sl_timers)
 
     # --- boundary: operations that cannot be made deterministic are rejected (ADR-0002) ---
 
