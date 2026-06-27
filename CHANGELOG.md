@@ -18,3 +18,7 @@ All notable changes to this project are documented here. The format follows
 - Seeded entropy: independent per-component sub-streams derived from the run seed, a CSPRNG shim that
   routes `os.urandom` and `secrets` to the seed, and a launcher that pins `PYTHONHASHSEED` so set/dict
   iteration order is fixed.
+- The public API: `World`, `seedloop.check(scenario, seeds=...)`, and `seedloop.replay(scenario,
+  seed=...)`. A scenario runs against a seeded `World` (its `rng`, virtual clock, and timeline); `check`
+  sweeps seeds and reports the first failing one; `replay` reproduces that seed's run identically. This
+  completes the Phase 1 deterministic core: reproducible, instant `asyncio` runs.

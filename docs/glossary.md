@@ -39,8 +39,9 @@ code ever drift, the code is wrong.
   components do not perturb each other (ADR-0009).
 - **Tripwire** — an interception point that raises `EntropyLeakError` in audit mode when an uncontrolled
   entropy source is touched (ADR-0008).
-- **Timeline / trace** — the append-only record of a run's events `(virtual_time, kind, ids…)`; equality
-  of two timelines for one seed is the determinism proof.
+- **Timeline / trace** — the append-only record of a run's events; equality of two timelines for one
+  seed is the determinism proof. In Phase 1 each entry is `(virtual_time, event)` from `world.record`;
+  the automatic per-event `(virtual_time, kind, ids…)` schema arrives with the Phase-2 recorder.
 - **Replay** — re-running a recorded seed to reproduce its timeline exactly.
 - **Boundary** — the line between what is controlled (single-threaded `asyncio` logic against the
   transport) and what is not (real threads, sockets, `uvloop`); crossing it raises `BoundaryError`.
