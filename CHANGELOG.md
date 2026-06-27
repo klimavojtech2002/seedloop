@@ -15,3 +15,6 @@ All notable changes to this project are documented here. The format follows
 - Virtual clock with autojump: `loop.time()` advances only by jumping to the next scheduled timer, so
   `asyncio.sleep` and timeouts resolve instantly with no real waiting; equal deadlines fire in scheduling
   order via a deterministic `(when, seq)` tie-break.
+- Seeded entropy: independent per-component sub-streams derived from the run seed, a CSPRNG shim that
+  routes `os.urandom` and `secrets` to the seed, and a launcher that pins `PYTHONHASHSEED` so set/dict
+  iteration order is fixed.

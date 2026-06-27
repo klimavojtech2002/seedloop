@@ -219,10 +219,13 @@ seedloop code runs, so it cannot be shimmed from inside the run. Verified during
 urandom as _urandom` at import — so the CSPRNG shim must patch `random._urandom` too, and hash order
 must be fixed even earlier, at process start.
 
-**Decision.** When a run needs a pinned hash seed, seedloop **re-execs the interpreter** with
+**Decision.** When a run needs a pinned hash seed, seedloop **re-runs the interpreter** with
 `PYTHONHASHSEED` set to a fixed value derived from the run seed (confirmed: two child processes with the
-same value hash identically; a different value differs). The CSPRNG shim patches both `os.urandom` and
-`random._urandom`.
+same value hash identically; a different value differs). It re-runs `sys.orig_argv` — the full original
+command, so a `-c`/`-m` invocation is reproduced, not just `python script.py`. POSIX replaces the process
+in place (`os.execve`); Windows has no in-place `exec`, so it spawns the child and exits with the child's
+return code (verified on Windows: in-place `execve` there loses output and the exit code). A guard env var
+prevents infinite recursion. The CSPRNG shim separately patches both `os.urandom` and `random._urandom`.
 
 **Consequences.**
 - Hash-order entropy is removed at the only point it can be — before interpreter start.

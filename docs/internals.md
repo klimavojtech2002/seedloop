@@ -4,9 +4,10 @@ How the deterministic core is built, in enough detail to implement it and to def
 behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *why* of each
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
-The Phase-1 core described here — the deterministic loop, the virtual clock, and autojump — is
-implemented and tested; the network, fault, entropy, and hash-seed sections are still design. The
-load-bearing CPython facts below were checked against the target interpreter (CPython 3.13); where a
+The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, and the seeded
+entropy primitives (sub-streams, the CSPRNG shim, the hash-seed launcher) — is implemented and tested;
+the network and fault sections are still design, and the entropy primitives are not yet wired into a run.
+The load-bearing CPython facts below were checked against the target interpreter (CPython 3.13); where a
 claim depends on a version, it says so.
 
 ## The loop and what it implements
