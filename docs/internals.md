@@ -4,11 +4,10 @@ How the deterministic core is built, in enough detail to implement it and to def
 behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *why* of each
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
-The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, and the seeded
-entropy primitives (sub-streams, the CSPRNG shim, the hash-seed launcher) — is implemented and tested;
-the network and fault sections are still design, and the entropy primitives are not yet wired into a run.
-The load-bearing CPython facts below were checked against the target interpreter (CPython 3.13); where a
-claim depends on a version, it says so.
+The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
+entropy primitives, and their assembly into a `World` with `check`/`replay` — is implemented and tested;
+the network and fault sections are still design. The load-bearing CPython facts below were checked
+against the target interpreter (CPython 3.13); where a claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -168,9 +167,13 @@ which is what makes "chaos" reproducible rather than random.
 
 ## Proving it: the timeline recorder
 
-Determinism is *proven by replay*, not asserted (the prime rule). The loop records a **timeline**: an
-append-only list of `(virtual_time, event_kind, ids…)` for every callback run, message delivered, and
-fault fired. Two runs of the same seed must produce byte-identical timelines; a replay-equivalence test
-runs a seed twice and asserts equality of the two traces. This is the test that *is* the determinism
-guarantee — if it ever differs, an entropy source escaped the World, and the test says so. The harness
-and the rest of the verification strategy are in [testing.md](testing.md).
+Determinism is *proven by replay*, not asserted (the prime rule). In Phase 1 the **timeline** is
+user-driven: `world.record(event)` appends a `(virtual_time, event)` pair, so a scenario logs the
+decisions whose reproducibility it cares about (its `rng` draws, its timed actions). Two runs of the same
+seed must produce byte-identical timelines; a replay-equivalence test runs a seed twice and asserts the
+traces are equal. This works because Phase-1 scheduling is deterministic (faithful FIFO + virtual clock),
+so a scenario that records its decisions captures everything that can vary. The automatic per-event
+recorder — every callback, message, and fault stamped with stable ids — is Phase 2 work, when the
+network gives events natural identities; until then the contract is "same seed → same recorded
+timeline," and identities outside that (Python `id()`, `repr`, asyncio task names) are not part of it.
+The harness and the rest of the verification strategy are in [testing.md](testing.md).

@@ -342,6 +342,29 @@ shipped package still has zero third-party dependencies.
 
 ---
 
+## ADR-0015 — `check`/`replay` do not pin `PYTHONHASHSEED`; pinning is opt-in
+
+**Status:** Accepted
+
+**Context.** ADR-0010 gives a launcher that pins `PYTHONHASHSEED` by re-running the interpreter. The
+0130 plan leaned toward `check` re-execing once into a pinned child and sweeping there. Building it
+surfaced the problem: the launcher re-runs the *whole* process, and `check` typically runs under a test
+runner — implicitly re-execing `pytest` from inside a test is hostile (it restarts the entire run).
+
+**Decision.** `check`/`replay` do **not** pin the hash seed. The determinism guarantee rests on
+ADR-0010's primary point: seedloop's own library code never depends on hash order. A user whose *own*
+code depends on `set`/`dict` iteration order can call `seedloop.ensure_hash_seed(seed)` at their entry
+point (before `check`), where re-execing the process is expected and safe.
+
+**Consequences.**
+- No surprise process restarts inside a test runner; `check` sweeps in-process, building a fresh `World`
+  per seed with no shared state.
+- The hash-seed backstop is available but explicit, matching where the cost (a re-exec) is acceptable.
+- Trade-off: a user relying on hash-ordered iteration without calling `ensure_hash_seed` could see a
+  cross-process replay diverge. Documented; the in-process replay within one run is unaffected.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

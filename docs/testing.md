@@ -7,26 +7,28 @@ per-slice test matrices live in the implementation plan.
 
 ## The central proof: replay equivalence
 
-Every run records a **timeline**: an append-only sequence of `(virtual_time, event_kind, ids…)` for each
-callback run, message delivered, and fault fired (see [internals.md](internals.md)). The determinism
-guarantee is one assertion over it:
+A run records a **timeline**. In Phase 1 it is user-driven: `world.record(event)` appends a
+`(virtual_time, event)` pair, so a scenario logs the decisions whose reproducibility it cares about (see
+[internals.md](internals.md)). The determinism guarantee is one assertion over it:
 
 ```
 run a seed → timeline A
 run the same seed again → timeline B
-assert A == B            # byte-identical
+assert A == B            # identical
 ```
 
 If the two ever differ, an entropy source escaped the World and the test fails loudly with the diverging
-event. This single harness is what turns "deterministic" from a promise into a checked property; every
-phase adds its surface (scheduling, clock, network, faults) to the timeline so the same equality test
-covers it. A failing seed found by `check` must also satisfy it: `replay(seed)` reproduces the recorded
-failing timeline exactly.
+event. This single harness is what turns "deterministic" from a promise into a checked property. Because
+Phase-1 scheduling is deterministic (faithful FIFO + virtual clock), a scenario that records its `rng`
+draws and timed actions captures everything that can vary. Later phases add the simulated network and
+faults to what is recorded — and an automatic per-event recorder with stable ids — so the same equality
+test covers them. A failing seed found by `check` satisfies it too: `replay(seed)` reproduces the run
+exactly.
 
-The harness is only as strong as the timeline's completeness: if the recorder omitted an ordering-
-relevant event, two runs could differ in that dimension and still compare equal. A **meta-test** guards
-this — it injects a known nondeterminism (an unseeded `random` draw) into a scenario and asserts the
-timeline *diverges*; if it does not, the recorder is missing an event kind, and the meta-test fails.
+When the automatic recorder lands (Phase 2), a **completeness meta-test** guards it — inject a known
+nondeterminism (an unseeded `random` draw the recorder should reflect) and assert the timeline
+*diverges*; if it does not, an event kind is missing. In Phase 1 the equivalent guard is that the
+replay-equivalence scenarios record their `rng` draws, so an entropy leak shows up directly.
 
 A companion **independence** check guards ADR-0009: changing how many values one component draws (e.g.
 adding a network duplication draw) must not change another component's stream for the same seed — verified by

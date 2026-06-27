@@ -31,8 +31,9 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this (illustrative; the API is specified in
-[docs/api.md](docs/api.md) and not implemented yet):
+world it fully controls. A test looks like this (the `World`, `check`, and `replay` calls are
+implemented; the network and fault calls — `world.net`, `world.always`, `world.run_for` — are the next
+phase, specified in [docs/api.md](docs/api.md)):
 
 ```python
 import seedloop
@@ -86,9 +87,11 @@ keeps the guarantee real.
 
 ## Status
 
-Design stage. The documentation is the specification — the architecture and the determinism boundary
-are designed first. The packaging and CI scaffold is in place; the deterministic core is built phase by
-phase, each useful on its own — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The **Phase 1 deterministic core is implemented**: the custom event loop, the virtual clock with
+autojump, seeded entropy, and the `World` / `check` / `replay` API — so `asyncio` runs are reproducible
+and instant, and a failing seed replays identically. The simulated network and fault injection shown in
+the example above are the next phase; the full API target is in [docs/api.md](docs/api.md) and the
+phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists
 

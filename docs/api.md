@@ -1,9 +1,13 @@
 # Public API
 
-The surface a user writes against. This is the design target for Phases 1–3; no code exists yet, so
-treat every signature as the committed *intent* the build is held to, not as shipped behaviour. The
-shape follows the boundary in [scope.md](scope.md) and the decisions in [decisions.md](decisions.md):
-user code is sans-I/O, talks to an addressed message port, and a run is a pure function of its seed.
+The surface a user writes against. This is the design target for Phases 1–3. **Implemented now (Phase
+1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
+`CheckResult`, `ensure_hash_seed`, and the error types except `InvariantError`. **Still design (Phase
+2–3):** the network port (`world.net`/`Transport`/`Endpoint`), the invariant API (`world.always`,
+`InvariantError`), and the fault API (`run_for`, `partition`, `slow_link`, `crash`).
+The shape follows the boundary in [scope.md](scope.md) and the decisions in
+[decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
+pure function of its seed.
 
 Names use the working package name `seedloop` (ADR naming is still open); nothing here hard-codes the
 name where a rename would be costly.
@@ -48,23 +52,28 @@ def check(
 ) -> CheckResult: ...
 
 def replay(scenario: Scenario, *, seed: int) -> None: ...
+
+def ensure_hash_seed(root_seed: int) -> None: ...
 ```
 
 - **`check`** runs `scenario` once per seed. `seeds=N` runs seeds `0..N-1`; an iterable runs exactly
   those seeds. Each run is built from its seed alone (loop, clock, RNG, network, faults). The first seed
-  whose run raises — an `assert`, an `InvariantError`, or any exception from user code — is the failure.
+  whose run raises — an `assert`, a `SeedloopError`, or any exception from user code — is the failure.
   With `on_failure="raise"` (default) `check` re-raises it, tagged with the seed; with `"return"` it
   stops and returns the result for programmatic use. Phase 3 routes seed generation and shrinking through
   Hypothesis (ADR-0004), so the reported seed is a *minimal* failing case where shrinking applies.
 - **`replay`** rebuilds the exact World for one seed and runs it once. Same seed → same timeline → same
   outcome, within a major version (ADR-0011).
+- **`ensure_hash_seed`** pins `PYTHONHASHSEED` for the process by re-running the interpreter, for code
+  that depends on `set`/`dict` iteration order. `check`/`replay` do not call it (re-execing a test runner
+  is hostile); a user invokes it at their entry point before `check` (ADR-0015).
 
 ```python
 @dataclass(frozen=True)
 class CheckResult:
     checked: int                 # how many seeds ran
     failing_seed: int | None     # first failing seed, or None if all passed
-    error: BaseException | None  # the exception that seed raised, or None
+    error: Exception | None      # the exception that seed raised, or None
 ```
 
 ## `World`
@@ -75,17 +84,19 @@ build it and pass it to the scenario.
 ```python
 class World:
     seed: int                    # this run's identity
-    net: Transport               # the simulated network port (see below)
     rng: random.Random           # seeded RNG for user code — use this, never the global random
 
-    def now(self) -> float: ...                       # current virtual time, seconds
-    def start(self, *nodes: Node) -> None: ...        # schedule each node's run() coroutine
-    def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...
+    # --- implemented (Phase 1) ---
+    def now(self) -> float: ...                        # current virtual time, seconds
+    def start(self, *nodes: Node) -> None: ...         # schedule each node's run(); a node that raises fails the run
+    def record(self, event: object) -> None: ...       # append (now, event) to the timeline (the determinism artifact)
+    timeline: tuple[object, ...]                        # read-only snapshot of recorded (virtual_time, event) pairs
 
+    # --- design target (Phase 2–3) ---
+    net: Transport               # the simulated network port (see below)
+    def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...
     async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None: ...
     async def run_until(self, predicate: Callable[[], bool], *, deadline: float | None = None) -> None: ...
-
-    # Fault constructors — seed-parameterized handles passed to run_for(...).
     def partition(self, *groups: Collection[Address]) -> Fault: ...
     def slow_link(self, a: Address | None = None, b: Address | None = None, *, factor: float | None = None) -> Fault: ...
     def crash(self, node: Address | None = None, *, at: float | None = None) -> Fault: ...
@@ -169,11 +180,14 @@ class Fault(Protocol): ...      # no user-facing members; pass to run_for(faults
 
 ```python
 class SeedloopError(Exception): ...           # base for everything seedloop raises
-class InvariantError(SeedloopError): ...       # an always(...) invariant was violated
 class DeadlockError(SeedloopError): ...         # the run is quiescent with tasks still awaiting
 class BoundaryError(SeedloopError): ...         # out-of-boundary use inside a run
 class EntropyLeakError(BoundaryError): ...      # an uncontrolled entropy source was touched (audit mode)
+class InvariantError(SeedloopError): ...        # design (Phase 3): an always(...) invariant was violated
 ```
+
+`SeedloopError`, `DeadlockError`, `BoundaryError`, and `EntropyLeakError` are implemented; `InvariantError`
+arrives with the `always()` invariant API in Phase 3.
 
 - **`InvariantError`** carries the invariant `name` and the violating step; it is the typical failure
   `check` reports.
