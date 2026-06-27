@@ -22,3 +22,7 @@ All notable changes to this project are documented here. The format follows
   seed=...)`. A scenario runs against a seeded `World` (its `rng`, virtual clock, and timeline); `check`
   sweeps seeds and reports the first failing one; `replay` reproduces that seed's run identically. This
   completes the Phase 1 deterministic core: reproducible, instant `asyncio` runs.
+- Simulated datagram network (`world.net`): nodes `bind` an address and exchange messages through an
+  addressed transport — no real socket. Delivery is a seeded timer, so message timing and reordering are
+  a reproducible function of the seed, and send/deliver events join the timeline. Faults and a reliable
+  channel follow.

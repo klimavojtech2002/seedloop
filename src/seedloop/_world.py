@@ -17,6 +17,7 @@ from typing import Protocol, runtime_checkable
 
 from seedloop._entropy import substream
 from seedloop._loop import DeterministicLoop
+from seedloop._net import Transport
 from seedloop._trace import Timeline
 
 
@@ -36,6 +37,7 @@ class World:
         self._loop = DeterministicLoop()
         self._timeline = Timeline()
         self._started: list[asyncio.Task[None]] = []
+        self.net = Transport(self._loop, substream(seed, "net"), self._timeline)
 
     def now(self) -> float:
         """Current virtual time in seconds (advances by autojump, never by real waiting)."""
