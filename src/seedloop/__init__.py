@@ -6,6 +6,7 @@ simulated network and fault injection follow.
 """
 
 from seedloop._entropy import ensure_hash_seed
+from seedloop._net import Address, Endpoint, Message, Transport
 from seedloop._run import CheckResult, Scenario, check, replay
 from seedloop._world import Node, World
 from seedloop.errors import (
@@ -16,13 +17,17 @@ from seedloop.errors import (
 )
 
 __all__ = [
+    "Address",
     "BoundaryError",
     "CheckResult",
     "DeadlockError",
+    "Endpoint",
     "EntropyLeakError",
+    "Message",
     "Node",
     "Scenario",
     "SeedloopError",
+    "Transport",
     "World",
     "check",
     "ensure_hash_seed",

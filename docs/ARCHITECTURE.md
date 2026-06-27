@@ -1,9 +1,10 @@
 # Architecture
 
 How `seedloop` makes Python `asyncio` deterministic, how a run works end to end, and the phased build
-that gets there. This is the design target; nothing is built yet. The determinism boundary — what is
-controlled and what is deliberately not — is in [scope.md](scope.md), and the reasoning behind the
-non-obvious choices is in [decisions.md](decisions.md).
+that gets there. The Phase 1 deterministic core and the Phase 2 datagram network are built; faults and
+the demo are the remaining phases. The determinism boundary — what is controlled and what is deliberately
+not — is in [scope.md](scope.md), and the reasoning behind the non-obvious choices is in
+[decisions.md](decisions.md).
 
 ## The key fact that makes this tractable
 

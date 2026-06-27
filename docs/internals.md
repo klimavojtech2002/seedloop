@@ -5,9 +5,9 @@ behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
 The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
-entropy primitives, and their assembly into a `World` with `check`/`replay` — is implemented and tested;
-the network and fault sections are still design. The load-bearing CPython facts below were checked
-against the target interpreter (CPython 3.13); where a claim depends on a version, it says so.
+entropy primitives, their assembly into a `World` with `check`/`replay`, and the datagram network — is
+implemented and tested; the fault sections are still design. The load-bearing CPython facts below were
+checked against the target interpreter (CPython 3.13); where a claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -149,13 +149,17 @@ one-time cost at the boundary and is invisible to user code. (The cleaner design
 ## Network as scheduled events
 
 The simulated transport (ADR-0006, full model in [network.md](network.md)) needs no new machinery — a
-message in flight is a timer. `endpoint.send(dst, msg)` draws a latency from the `"net"` sub-stream and
-schedules a delivery callback at `now + latency` that appends `(src, msg)` to `dst`'s receive queue and
-wakes any `recv` waiting on it. Reordering falls out for free: two messages sent close together get
-independent latencies, so their arrival order can differ from send order. A drop schedules nothing; a
-duplicate schedules two deliveries; a partition is a predicate checked when the delivery fires (still
-cut → dropped). Because every delivery is an ordinary timer, network timing obeys the same deterministic
-heap as everything else.
+message in flight is a timer. `endpoint.send(dst, msg)` assigns the message a monotonic id, records a
+`(now, "send", mid, src, dst)` event, draws a latency from the `"net"` sub-stream, and schedules a
+delivery callback at `now + latency`. The callback records `(now, "deliver", mid, src, dst)`, appends
+`(src, msg)` to `dst`'s receive queue, and wakes any `recv` waiting on it; a delivery to an unbound
+address is dropped. The monotonic `mid` is the *stable* timeline identity — Python `id()`, `repr`, and
+asyncio task names are not (see the timeline note below), so the network's send/deliver events make
+replay-equivalence cover the network without leaking object identities. Reordering falls out for free:
+two messages sent close together get independent latencies, so their arrival order can differ from send
+order. (Drop, duplicate, and partition — and the opt-in reliable channel — arrive in the fault slice;
+each is a tweak to whether and how many delivery timers a send schedules.) Because every delivery is an
+ordinary timer, network timing obeys the same deterministic heap as everything else.
 
 ## Faults as scheduled events
 

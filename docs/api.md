@@ -2,9 +2,10 @@
 
 The surface a user writes against. This is the design target for Phases 1–3. **Implemented now (Phase
 1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
-`CheckResult`, `ensure_hash_seed`, and the error types except `InvariantError`. **Still design (Phase
-2–3):** the network port (`world.net`/`Transport`/`Endpoint`), the invariant API (`world.always`,
-`InvariantError`), and the fault API (`run_for`, `partition`, `slow_link`, `crash`).
+`CheckResult`, `ensure_hash_seed`, and the error types except `InvariantError`. **Phase 2 so far:** the
+network port (`world.net`/`Transport`/`Endpoint`) with datagram delivery and reordering. **Still design:**
+network faults and `reliable=True` (slice 0210), the invariant API (`world.always`, `InvariantError`),
+and the fault API (`run_for`, `partition`, `slow_link`, `crash`).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
@@ -92,8 +93,10 @@ class World:
     def record(self, event: object) -> None: ...       # append (now, event) to the timeline (the determinism artifact)
     timeline: tuple[object, ...]                        # read-only snapshot of recorded (virtual_time, event) pairs
 
+    # --- implemented (Phase 2, datagram subset) ---
+    net: Transport               # the simulated network (see below); faults/reliable are slice 0210
+
     # --- design target (Phase 2–3) ---
-    net: Transport               # the simulated network port (see below)
     def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...
     async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None: ...
     async def run_until(self, predicate: Callable[[], bool], *, deadline: float | None = None) -> None: ...
@@ -120,26 +123,29 @@ class World:
 ## The network port
 
 The sans-I/O seam. User code sends and receives typed messages through an **addressed endpoint**; it
-never touches a socket. seedloop supplies the deterministic implementation of `Transport`; a production
-user could supply a real one against the same interface (ADR-0007).
+never touches a socket. The `Endpoint` *is* the port — the small `Protocol` a node's logic depends on,
+so a production user could back it with a real transport (ADR-0007). `Transport` is `world.net` itself,
+seedloop's concrete deterministic network, whose `bind` hands out endpoints. One endpoint has one logical
+receiver: concurrent `recv` on the same endpoint is not supported.
 
 ```python
 Address: TypeAlias = int        # a node's address on the simulated network
 Message: TypeAlias = object     # an opaque payload; seedloop never inspects it
 
-class Endpoint(Protocol):
+class Endpoint(Protocol):       # the sans-I/O port a node holds
     address: Address
     async def send(self, dst: Address, msg: Message) -> None: ...
     async def recv(self) -> tuple[Address, Message]: ...   # (src, msg), blocks until one arrives
 
-class Transport(Protocol):
+class Transport:                # the concrete simulated network (world.net)
     def bind(self, address: Address, *, reliable: bool = False) -> Endpoint: ...
 ```
 
 - **`bind`** gives a node its endpoint. `reliable=False` (default) is an unreliable datagram channel:
-  the seed may delay, reorder, duplicate, or drop messages, and a partition can cut delivery entirely
-  (ADR-0006). `reliable=True` opts that endpoint's links into ordered, no-loss delivery for protocols
-  that assume per-connection ordering — still not a byte stream.
+  the seed delays and reorders messages (and, once faults land, may duplicate, drop, or partition them —
+  ADR-0006). *Implemented now:* delivery with seeded latency and reordering. *Design (slice 0210):* the
+  fault behaviours and `reliable=True` (ordered, no-loss delivery for protocols that assume
+  per-connection ordering); calling `bind(..., reliable=True)` today raises until then.
 - **`send`** enqueues a message for `dst`; it returns once enqueued, not on delivery (delivery is a
   later scheduled event whose timing the seed owns). **`recv`** yields the next message for this
   endpoint, blocking in virtual time until one is scheduled to arrive.
