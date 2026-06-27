@@ -25,3 +25,12 @@ class DeadlockError(SeedloopError):
     A real ``asyncio`` program would hang here; a simulated run raises instead of spinning, so
     the deadlock is a visible failure tied to the seed that produced it.
     """
+
+
+class EntropyLeakError(BoundaryError):
+    """An uncontrolled entropy source was touched inside a simulated run.
+
+    Defined now; the non-determinism auditor (a later slice) raises it in audit mode when code
+    reaches for real ``os.urandom``/``secrets``, real time, or unseeded randomness instead of the
+    World's seeded source (``docs/decisions.md`` ADR-0008).
+    """
