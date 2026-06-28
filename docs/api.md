@@ -3,9 +3,10 @@
 The surface a user writes against. This is the design target for Phases 1–3. **Implemented now (Phase
 1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
 `CheckResult`, `ensure_hash_seed`, and the error types except `InvariantError`. **Phase 2 so far:** the
-network port (`world.net`/`Transport`/`Endpoint`) with datagram delivery and reordering. **Still design:**
-network faults and `reliable=True` (slice 0210), the invariant API (`world.always`, `InvariantError`),
-and the fault API (`run_for`, `partition`, `slow_link`, `crash`).
+network port (`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
+partition/heal, and the reliable channel. **Still design:** seed-scheduled faults
+(`run_for`/`partition()`/`slow_link()`/`crash()` handles) and the invariant API (`world.always`,
+`InvariantError`).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
@@ -93,8 +94,8 @@ class World:
     def record(self, event: object) -> None: ...       # append (now, event) to the timeline (the determinism artifact)
     timeline: tuple[object, ...]                        # read-only snapshot of recorded (virtual_time, event) pairs
 
-    # --- implemented (Phase 2, datagram subset) ---
-    net: Transport               # the simulated network (see below); faults/reliable are slice 0210
+    # --- implemented (Phase 2: datagram + faults) ---
+    net: Transport               # the simulated network (see below): delivery, loss/duplicate, partition, reliable
 
     # --- design target (Phase 2–3) ---
     def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...
@@ -138,14 +139,19 @@ class Endpoint(Protocol):       # the sans-I/O port a node holds
     async def recv(self) -> tuple[Address, Message]: ...   # (src, msg), blocks until one arrives
 
 class Transport:                # the concrete simulated network (world.net)
-    def bind(self, address: Address, *, reliable: bool = False) -> Endpoint: ...
+    def bind(self, address: Address, *, reliable: bool = False,
+             loss: float = 0.0, duplicate: float = 0.0) -> Endpoint: ...
+    def partition(self, *groups: set[Address]) -> None: ...   # split the network
+    def heal(self) -> None: ...                                # restore full connectivity
 ```
 
-- **`bind`** gives a node its endpoint. `reliable=False` (default) is an unreliable datagram channel:
-  the seed delays and reorders messages (and, once faults land, may duplicate, drop, or partition them —
-  ADR-0006). *Implemented now:* delivery with seeded latency and reordering. *Design (slice 0210):* the
-  fault behaviours and `reliable=True` (ordered, no-loss delivery for protocols that assume
-  per-connection ordering); calling `bind(..., reliable=True)` today raises until then.
+- **`bind`** gives a node its endpoint. `reliable=False` (default) is an unreliable datagram channel
+  where the seed delays and reorders messages; `loss`/`duplicate` are per-message probabilities on the
+  endpoint's outgoing links, and `reliable=True` gives no-loss, in-order delivery (ignoring
+  loss/duplicate) for protocols that assume per-connection ordering (ADR-0006). All implemented.
+- **`partition(*groups)` / `heal()`** split the network and restore it; a cross-group message is dropped
+  at delivery while the split holds (ADR-0016). Seed-*scheduled* faults via `run_for(faults=[...])` are
+  still design.
 - **`send`** enqueues a message for `dst`; it returns once enqueued, not on delivery (delivery is a
   later scheduled event whose timing the seed owns). **`recv`** yields the next message for this
   endpoint, blocking in virtual time until one is scheduled to arrive.

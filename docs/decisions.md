@@ -365,6 +365,35 @@ point (before `check`), where re-execing the process is expected and safe.
 
 ---
 
+## ADR-0016 — Scenario-driven partitions now; seed-scheduled faults deferred
+
+**Status:** Accepted
+
+**Context.** `docs/api.md` sketches a `world.run_for(seconds, faults=[world.partition(), ...])` API where
+the *seed* chooses fault timing (which links partition, when, for how long). Building the fault model
+showed that API couples fault injection with a time-advancing primitive (`run_for`) and a fault-handle
+constructor set — a larger surface than the fault *mechanism* itself.
+
+**Decision.** Slice 0210 implements the fault mechanism with the seed driving all message-level chaos —
+per-message loss and duplication drawn from the `"faults"` sub-stream, partition reachability evaluated
+at delivery time — while the scenario drives *topology* explicitly: `world.net.partition(*groups)` and
+`world.net.heal()`. A duplicate shares the original message's `mid` (it *is* the same message arriving
+twice, so a dedup test can assert "same id seen twice"). The seed-scheduled `run_for(faults=[...])` API,
+the fault-handle constructors (`partition()`/`slow_link()`/`crash()` as handles), and node crash stay
+design.
+
+**Consequences.**
+- The DST payoff is reached now: message timing, loss, and duplication under a partition are a
+  reproducible function of the seed, so a partition-dependent bug is surfaced by `check` and replayed by
+  `replay` — demonstrated by a test.
+- The fault *timing* a scenario sets is explicit rather than seed-chosen; a sweep still explores many
+  message timings under it. Seed-scheduled fault timing is a clean later add (`run_for`), deferred
+  honestly, not faked.
+- Trade-off: per-endpoint `loss`/`duplicate` is a coarser model than a per-`(src, dst)` link matrix.
+  Acceptable for the protocols seedloop targets; a finer model is a later refinement.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

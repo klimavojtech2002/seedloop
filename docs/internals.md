@@ -5,9 +5,10 @@ behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
 The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
-entropy primitives, their assembly into a `World` with `check`/`replay`, and the datagram network — is
-implemented and tested; the fault sections are still design. The load-bearing CPython facts below were
-checked against the target interpreter (CPython 3.13); where a claim depends on a version, it says so.
+entropy primitives, their assembly into a `World` with `check`/`replay`, and the network with its faults
+(loss, duplication, partition, reliable channel) — is implemented and tested; only the seed-*scheduled*
+fault API (`run_for`) is still design. The load-bearing CPython facts below were checked against the
+target interpreter (CPython 3.13); where a claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -157,9 +158,11 @@ address is dropped. The monotonic `mid` is the *stable* timeline identity — Py
 asyncio task names are not (see the timeline note below), so the network's send/deliver events make
 replay-equivalence cover the network without leaking object identities. Reordering falls out for free:
 two messages sent close together get independent latencies, so their arrival order can differ from send
-order. (Drop, duplicate, and partition — and the opt-in reliable channel — arrive in the fault slice;
-each is a tweak to whether and how many delivery timers a send schedules.) Because every delivery is an
-ordinary timer, network timing obeys the same deterministic heap as everything else.
+order. Drop, duplicate, and partition are tweaks to whether and how many delivery timers a send
+schedules (drawn from the `"faults"` sub-stream): a drop schedules nothing, a duplicate schedules a
+second delivery, and a partition is a reachability check when the delivery fires. The reliable channel
+schedules at a non-decreasing per-link delivery time so messages arrive in send order. Because every
+delivery is an ordinary timer, network timing obeys the same deterministic heap as everything else.
 
 ## Faults as scheduled events
 
