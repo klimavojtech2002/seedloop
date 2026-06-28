@@ -14,6 +14,7 @@ from seedloop.errors import (
     BoundaryError,
     DeadlockError,
     EntropyLeakError,
+    InvariantError,
     SeedloopError,
 )
 
@@ -24,6 +25,7 @@ __all__ = [
     "DeadlockError",
     "Endpoint",
     "EntropyLeakError",
+    "InvariantError",
     "Message",
     "Node",
     "Scenario",

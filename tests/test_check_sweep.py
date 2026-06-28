@@ -1,4 +1,4 @@
-"""check() sweeps seeds and reports the first failure (slice 0130)."""
+"""check() sweeps seeds and reports the first failure."""
 
 from __future__ import annotations
 

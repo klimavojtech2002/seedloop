@@ -1,4 +1,4 @@
-"""Seeded entropy: sub-streams, the CSPRNG shim, and the hash-seed launcher (slice 0120)."""
+"""Seeded entropy: sub-streams, the CSPRNG shim, and the hash-seed launcher."""
 
 from __future__ import annotations
 

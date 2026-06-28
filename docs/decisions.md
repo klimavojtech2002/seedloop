@@ -394,6 +394,31 @@ design.
 
 ---
 
+## ADR-0017 — Invariant API in the core; Hypothesis as an optional extra
+
+**Status:** Accepted
+
+**Context.** ADR-0004 plans Hypothesis as the seed-exploration and shrinking engine. The natural reading
+is to wire it into `check`, but that makes Hypothesis a *runtime* dependency of every seedloop install —
+and seedloop's core has, deliberately, zero runtime dependencies (a property reviewers and users value).
+The invariant API (`world.always`) is separate: it is pure seedloop, no dependency, and it is what a
+scenario needs to state a continuous safety property (the Raft demo's "at most one leader").
+
+**Decision.** Ship the invariant API in the core now (`world.always(predicate, name=...)` →
+`InvariantError`, checked after every step). Defer the Hypothesis integration to its own slice as an
+**optional extra** (`pip install seedloop[hypothesis]`), so the core stays dependency-free and a user who
+wants property-based input generation + shrinking opts in.
+
+**Consequences.**
+- The core remains zero-runtime-dependency; the demo-critical ergonomic ships without entangling a heavy
+  dep into everyone's install.
+- DST and property-based testing stay complementary (ADR-0004): the invariant API is the "what must
+  always hold" half; the optional Hypothesis extra is the "explore and shrink inputs" half.
+- Trade-off: the headline "integrates with Hypothesis" lands a slice later. Worth it — the integration is
+  cleaner as an opt-in extra than baked into `check`, and the invariant API is independently valuable.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

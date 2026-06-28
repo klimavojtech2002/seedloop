@@ -1,4 +1,4 @@
-"""Simulated datagram transport tests (slice 0200)."""
+"""Simulated datagram transport tests."""
 
 from __future__ import annotations
 

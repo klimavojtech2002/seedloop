@@ -1,4 +1,4 @@
-"""Scheduling-order and determinism tests for the deterministic loop (slice 0100)."""
+"""Scheduling-order and determinism tests for the deterministic loop."""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ def test_dynamically_scheduled_callback_runs_after_queued_callbacks() -> None:
         loop.close()
     # "nested" is scheduled by `first`, so it goes to the back of the queue and runs after `second`
     # (FIFO). Whether it runs in the same step or the next is not observable until timers exist
-    # (slice 0110), so this asserts only the order.
+    # , so this asserts only the order.
     assert result == ["first", "second", "nested"]
 
 

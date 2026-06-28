@@ -12,13 +12,14 @@ and the simulated network's delivery timing — not callback order.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from typing import Protocol, runtime_checkable
 
 from seedloop._entropy import substream
 from seedloop._loop import DeterministicLoop
 from seedloop._net import Transport
 from seedloop._trace import Timeline
+from seedloop.errors import InvariantError
 
 
 @runtime_checkable
@@ -37,6 +38,7 @@ class World:
         self._loop = DeterministicLoop()
         self._timeline = Timeline()
         self._started: list[asyncio.Task[None]] = []
+        self._invariants: list[tuple[str, Callable[[], bool]]] = []
         self.net = Transport(
             self._loop, substream(seed, "net"), substream(seed, "faults"), self._timeline
         )
@@ -52,6 +54,23 @@ class World:
         identical sequence. A scenario records the decisions whose reproducibility it cares about.
         """
         self._timeline.record((self._loop.time(), event))
+
+    def always(self, predicate: Callable[[], bool], *, name: str) -> None:
+        """Register a safety property that must hold throughout the run.
+
+        ``predicate`` is evaluated after every step (not during teardown); the first step where it
+        is false raises ``InvariantError(name)``, which ``check`` reports. It must be pure and
+        read-only — a predicate that mutates state or draws entropy would break determinism. A
+        started node's body runs a step after ``start``, so a predicate over node state sees its
+        initial value on the first check.
+        """
+        self._invariants.append((name, predicate))
+        self._loop._sl_after_step = self._check_invariants  # check from the next step on
+
+    def _check_invariants(self) -> None:
+        for name, predicate in self._invariants:
+            if not predicate():
+                raise InvariantError(name, self._loop.time())
 
     def start(self, *nodes: Node) -> None:
         """Schedule each node's ``run()`` coroutine as a task on the loop.
@@ -78,6 +97,10 @@ class World:
                 if exc is not None:
                     raise exc
         finally:
+            # Invariants describe the logical run, not cancellation cleanup — stop checking them
+            # before teardown, so a node mutating observed state in its cancel handler cannot raise
+            # a spurious InvariantError (and cannot mask the real failure raised above).
+            self._loop._sl_after_step = None
             # Cancel every task still pending — started nodes and any the scenario spawned — and let
             # the cancellations process, so the loop closes without "Task was destroyed but it is
             # pending" warnings (a node loop that never returns, or a recv stuck under a fault).

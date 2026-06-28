@@ -1,4 +1,4 @@
-"""Boundary tests: every out-of-scope operation is rejected, never run (slice 0100)."""
+"""Boundary tests: every out-of-scope operation is rejected, never run."""
 
 from __future__ import annotations
 
