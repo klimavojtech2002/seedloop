@@ -6,8 +6,6 @@ import asyncio
 from collections.abc import Sequence
 from typing import cast
 
-import pytest
-
 import seedloop
 from seedloop._run import _run_one
 from seedloop._world import World
@@ -134,11 +132,3 @@ def test_send_to_unbound_address_is_dropped() -> None:
     # The delivery callback must handle the unbound address without raising — an exception there
     # would be routed to the loop's handler, not the scenario, and silently swallowed.
     assert errors == []
-
-
-def test_reliable_channel_not_yet_supported() -> None:
-    async def scenario(world: World) -> None:
-        world.net.bind(1, reliable=True)
-
-    with pytest.raises(NotImplementedError):
-        seedloop.replay(scenario, seed=1)

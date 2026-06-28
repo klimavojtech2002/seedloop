@@ -24,5 +24,7 @@ All notable changes to this project are documented here. The format follows
   completes the Phase 1 deterministic core: reproducible, instant `asyncio` runs.
 - Simulated datagram network (`world.net`): nodes `bind` an address and exchange messages through an
   addressed transport — no real socket. Delivery is a seeded timer, so message timing and reordering are
-  a reproducible function of the seed, and send/deliver events join the timeline. Faults and a reliable
-  channel follow.
+  a reproducible function of the seed, and send/deliver events join the timeline.
+- Network faults: per-endpoint `loss` and `duplicate` probabilities (drawn from the seed), network
+  `partition`/`heal`, and an opt-in `reliable=True` channel (no-loss, in-order). A partition-dependent
+  bug can now be surfaced by `check` and replayed from the seed — the DST payoff.

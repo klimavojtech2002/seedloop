@@ -31,9 +31,9 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this (the `World`, `check`, and `replay` calls are
-implemented; the network and fault calls — `world.net`, `world.always`, `world.run_for` — are the next
-phase, specified in [docs/api.md](docs/api.md)):
+world it fully controls. A test looks like this (`World`, `check`, `replay`, and the network —
+`world.net` with loss, duplication, and partitions — are implemented; the invariant/fault-schedule
+calls `world.always` and `world.run_for` are the next phase, specified in [docs/api.md](docs/api.md)):
 
 ```python
 import seedloop

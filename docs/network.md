@@ -64,21 +64,28 @@ link delivers whole messages, reliably and in order; it does not pretend to be a
 
 ## Faults
 
-Faults are seed-parameterized handles passed to `world.run_for(faults=[...])`; their constructors are in
-[api.md](api.md). Each registers timers on the seed's `"faults"` sub-stream that toggle network or node
-state:
+Faults draw from the seed's `"faults"` sub-stream (independent of `"net"`, so enabling a fault does not
+shift surviving messages' latencies). *Implemented:*
 
-- **partition(\*groups)** — splits nodes into groups; cross-group links become unreachable at the
-  partition's start and reachable again when it heals. Unparameterized, the seed picks the split and the
-  open/heal times.
-- **slow_link(a, b, factor)** — multiplies the `a↔b` link's latency for a window; a large factor is a
-  near-stall short of a full cut.
-- **crash(node, at)** — sets a node's stopped flag at virtual time `at`; its `run()` stops making
-  progress. Restart-vs-stop semantics are settled in Phase 2 against the Raft demo's needs.
+- **Loss / duplication** — `bind(address, loss=p, duplicate=q)` sets per-message probabilities on that
+  endpoint's outgoing links. At send the seed decides: drop (schedule no delivery, recorded as `drop`) or
+  duplicate (a second delivery with an independent latency, recorded as `duplicate`, sharing the
+  message's id). Default 0.0.
+- **Partition** — `world.net.partition(*groups)` splits the network; nodes in different groups cannot
+  reach each other until `world.net.heal()`. A node in no listed group stays connected to everyone.
+  Reachability is checked *when a delivery fires* — a partition that opened in flight cuts the message
+  (`drop-partitioned`); one that healed in time lets it through.
+- **Reliable channel** — `bind(address, reliable=True)` opts into no-loss, no-duplication, in-order
+  delivery per `(src, dst)` (a single non-decreasing delivery clock per link); latency still applies and
+  a partition still cuts it. Not a byte stream.
 
-Because the schedule is a pure function of the seed, the same seed injects the same faults at the same
-virtual times every run — which is what makes a partition-dependent bug reproducible (the Phase 2
-payoff).
+The same seed injects the same loss, duplication, and (under a scenario's topology) the same partition
+effects at the same virtual times every run — which is what makes a partition-dependent bug reproducible
+(the DST payoff: `check` finds the failing seed, `replay` reproduces it).
+
+*Design (deferred, ADR-0016):* seed-*scheduled* faults via `world.run_for(seconds, faults=[...])` where
+the seed chooses partition timing, the fault-handle constructors (`partition()`/`slow_link()`/`crash()`),
+and node crash. The scenario drives partition topology explicitly for now.
 
 ## What this model is not
 

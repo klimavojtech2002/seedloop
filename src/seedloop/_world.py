@@ -37,7 +37,9 @@ class World:
         self._loop = DeterministicLoop()
         self._timeline = Timeline()
         self._started: list[asyncio.Task[None]] = []
-        self.net = Transport(self._loop, substream(seed, "net"), self._timeline)
+        self.net = Transport(
+            self._loop, substream(seed, "net"), substream(seed, "faults"), self._timeline
+        )
 
     def now(self) -> float:
         """Current virtual time in seconds (advances by autojump, never by real waiting)."""
@@ -76,6 +78,12 @@ class World:
                 if exc is not None:
                     raise exc
         finally:
-            for task in self._started:
-                task.cancel()  # stop nodes still running (e.g. a node loop that never returns)
+            # Cancel every task still pending — started nodes and any the scenario spawned — and let
+            # the cancellations process, so the loop closes without "Task was destroyed but it is
+            # pending" warnings (a node loop that never returns, or a recv stuck under a fault).
+            pending = [t for t in asyncio.all_tasks(self._loop) if not t.done()]
+            for task in pending:
+                task.cancel()
+            if pending:
+                self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             self._loop.close()
