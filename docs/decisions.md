@@ -419,6 +419,38 @@ wants property-based input generation + shrinking opts in.
 
 ---
 
+## ADR-0018 — The Raft demo proves the framework with a toggled, labelled bug
+
+**Status:** Accepted
+
+**Context.** The project needs an end-to-end proof a reviewer can run: a real protocol under seedloop
+where a concurrency bug is found and replayed. The honesty risk (prime directive) is over-claiming —
+presenting a *planted* bug as a *discovered* flaw in canonical Raft, or shipping a demo whose "bug" is
+actually an unintended mistake in the harness.
+
+**Decision.** The demo is a small Raft **leader election** (election safety only; log replication,
+persistence, and membership changes are explicitly out of scope). It carries a `buggy` toggle: the
+correct path enforces the single-vote-per-term rule, the buggy path omits it (a node can vote for two
+candidates in one term). In a three-node cluster the buggy path lets two candidates each reach a majority
+and lead the same term — split-brain. (Why the rule prevents it: the single shared third voter can break
+the tie only once, so one candidate gets two votes and the other one — never two majorities.) A seed sweep finds a violating seed for the buggy path and `replay`
+reproduces it; the **same sweep over the correct path finds no violation**. That two-sided result is the
+proof and the honesty guard: the violation is the toggled flaw, not the harness. Election timeouts are
+drawn from `world.rng`, so the seed owns the race.
+
+**Consequences.**
+- A runnable, honest centrepiece: the bug is real (a missing safety rule that causes the canonical
+  split-brain the majority rule exists to prevent), labelled as a toggle, and the corrected control rules
+  out a harness artefact.
+- Building it validated the framework end to end (loop + clock + entropy + network + faults + invariants
+  + check/replay composed against a non-trivial protocol) — and surfaced a genuine subtle bug in the
+  first "correct" election (a same-term vote reset on heartbeat), exactly the class of bug DST catches.
+- Trade-off: election-only is not full Raft. Stated plainly; election safety is *the* Raft safety
+  property and split-brain is its canonical violation — enough to be real, log replication noted as a
+  later extension.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

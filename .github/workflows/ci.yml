@@ -34,3 +34,5 @@ jobs:
         run: mypy .
       - name: Tests
         run: pytest -q
+      - name: Demo
+        run: python -m seedloop.demos.raft

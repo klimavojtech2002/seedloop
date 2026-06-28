@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 - Invariant API: `world.always(predicate, *, name)` registers a continuous safety property checked after
   every step; the first step it is false raises `InvariantError(name)`, which `check` reports and `replay`
   reproduces. Checking is read-only — a run with a passing invariant has the same timeline as one without.
+- The Raft demo (`python -m seedloop.demos.raft`): a small Raft leader election whose deliberate,
+  toggled flaw (a missing single-vote rule) lets a seed sweep find a split-brain — two leaders in one
+  term — and replay it from the seed; the corrected election passes the same sweep. The worked proof that
+  seedloop finds and replays a real class of consensus bug.
 
 ## [0.2.0] — 2026-06-28
 
