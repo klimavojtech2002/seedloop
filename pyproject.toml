@@ -23,6 +23,12 @@ classifiers = [
 dynamic = ["version"]
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/klimavojtech2002/seedloop"
+Repository = "https://github.com/klimavojtech2002/seedloop"
+Issues = "https://github.com/klimavojtech2002/seedloop/issues"
+Changelog = "https://github.com/klimavojtech2002/seedloop/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2"]
 
