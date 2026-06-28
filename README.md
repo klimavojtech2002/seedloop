@@ -33,7 +33,8 @@ You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
 world it fully controls. A test looks like this (`World`, `check`, `replay`, and the network —
 `world.net` with loss, duplication, and partitions — are implemented; the invariant/fault-schedule
-calls `world.always` and `world.run_for` are the next phase, specified in [docs/api.md](docs/api.md)):
+`world.always` invariant is implemented; the `world.run_for` fault-schedule call is the next phase,
+specified in [docs/api.md](docs/api.md)):
 
 ```python
 import seedloop
@@ -56,6 +57,30 @@ seedloop.check(scenario, seeds=10_000)
 
 `seedloop.replay(scenario, seed=4823)` re-runs that exact timeline, deterministically, as many times
 as you need to debug it. The full API is in [docs/api.md](docs/api.md).
+
+## The worked proof: a Raft split-brain, found and replayed
+
+A small Raft leader election ships as a demo. With a deliberate, labelled flaw — a node that omits the
+single-vote-per-term rule — a seed sweep finds the timing where two nodes both win an election in the
+same term (split-brain), and replays it from the seed. The corrected election passes the same sweep, so
+the violation is the toggled flaw, not the harness: in a three-node cluster the shared third voter can
+only break the tie once under the single-vote rule, so one candidate gets two votes and the other one —
+never two leaders.
+
+```
+$ python -m seedloop.demos.raft
+seedloop Raft election demo - hunting for split-brain
+
+buggy election: split-brain found at seed=7
+  reproduce it:  seedloop.replay(election_scenario(buggy=True), seed=7)
+  replay reproduces it: invariant 'at-most-one-leader-per-term' violated at t=0.229...
+correct election (single-vote rule enforced): no violation over the same 200 seeds
+-> the violation is the toggled flaw, not the harness.
+```
+
+The election logic is in [`src/seedloop/demos/raft.py`](src/seedloop/demos/raft.py). It is election only
+(terms, `RequestVote`, majority, heartbeats) — log replication, persistence, and membership changes are
+out of scope.
 
 ## What it does
 
@@ -91,9 +116,10 @@ The **deterministic core and the simulated network are implemented** (through v0
 loop, the virtual clock with autojump, seeded entropy, the `World` / `check` / `replay` API, and the
 simulated network with fault injection (loss, duplication, partitions) — so `asyncio` runs are
 reproducible and instant, and a partition- or timing-dependent bug replays identically from its seed.
-The invariant API (`world.always`/`run_for`) and the worked Raft demo are the next phase; the full API
-target is in [docs/api.md](docs/api.md) and the
-phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The invariant API (`world.always`) and the worked Raft demo are implemented (the demo above runs today);
+the seed-scheduled fault-schedule API (`world.run_for`) and the non-determinism auditor are the next
+phase. The full API target is in [docs/api.md](docs/api.md) and the phased build in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists
 
