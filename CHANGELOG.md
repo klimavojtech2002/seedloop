@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Invariant API: `world.always(predicate, *, name)` registers a continuous safety property checked after
+  every step; the first step it is false raises `InvariantError(name)`, which `check` reports and `replay`
+  reproduces. Checking is read-only — a run with a passing invariant has the same timeline as one without.
+
 ## [0.2.0] — 2026-06-28
 
 Phase 2: the simulated network and fault injection — the deterministic-simulation-testing payoff.

@@ -27,6 +27,20 @@ class DeadlockError(SeedloopError):
     """
 
 
+class InvariantError(SeedloopError):
+    """An ``always(...)`` invariant was violated during a run.
+
+    A continuous safety property (e.g. "at most one leader") that must hold throughout, checked
+    after every step; the first step where it is false raises this, which ``check`` reports as the
+    failure. Carries the invariant's ``name`` and the virtual ``time`` of the violation.
+    """
+
+    def __init__(self, name: str, time: float) -> None:
+        super().__init__(f"invariant {name!r} violated at t={time}")
+        self.name = name
+        self.time = time
+
+
 class EntropyLeakError(BoundaryError):
     """An uncontrolled entropy source was touched inside a simulated run.
 

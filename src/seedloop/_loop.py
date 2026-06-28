@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+from collections.abc import Callable
 from typing import Any, NoReturn
 
 from seedloop.errors import BoundaryError, DeadlockError
@@ -33,6 +34,9 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         # so equal deadlines fire in scheduling order.
         self._sl_timers: list[tuple[float, int, asyncio.TimerHandle]] = []
         self._sl_timer_seq = 0
+        # Optional hook the World uses to check invariants after each step; None by default, so a
+        # run without invariants is unchanged. It may raise to fail the run.
+        self._sl_after_step: Callable[[], None] | None = None
 
     def time(self) -> float:
         return self._sl_time
@@ -76,6 +80,8 @@ class DeterministicLoop(asyncio.BaseEventLoop):
             handle = ready.popleft()
             if not handle.cancelled():
                 handle._run()
+        if self._sl_after_step is not None:
+            self._sl_after_step()  # check invariants; may raise to fail the run
 
     def _fire_due_timers(self) -> None:
         # Promote every timer whose deadline has arrived (<= the clock) to the ready queue.

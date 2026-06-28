@@ -1,4 +1,4 @@
-"""Timer tie-break and cancellation tests (slice 0110)."""
+"""Timer tie-break and cancellation tests."""
 
 from __future__ import annotations
 

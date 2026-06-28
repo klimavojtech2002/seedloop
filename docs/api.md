@@ -2,11 +2,11 @@
 
 The surface a user writes against. This is the design target for Phases 1–3. **Implemented now (Phase
 1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
-`CheckResult`, `ensure_hash_seed`, and the error types except `InvariantError`. **Phase 2 so far:** the
-network port (`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
-partition/heal, and the reliable channel. **Still design:** seed-scheduled faults
-(`run_for`/`partition()`/`slow_link()`/`crash()` handles) and the invariant API (`world.always`,
-`InvariantError`).
+`CheckResult`, `ensure_hash_seed`, and the error types. **Phase 2:** the network port
+(`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
+partition/heal, and the reliable channel. **Phase 3 so far:** the invariant API (`world.always`,
+`InvariantError`). **Still design:** seed-scheduled faults
+(`run_for`/`partition()`/`slow_link()`/`crash()` handles).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
@@ -97,8 +97,10 @@ class World:
     # --- implemented (Phase 2: datagram + faults) ---
     net: Transport               # the simulated network (see below): delivery, loss/duplicate, partition, reliable
 
-    # --- design target (Phase 2–3) ---
-    def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...
+    # --- implemented (Phase 3) ---
+    def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...  # a continuous safety property
+
+    # --- design target ---
     async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None: ...
     async def run_until(self, predicate: Callable[[], bool], *, deadline: float | None = None) -> None: ...
     def partition(self, *groups: Collection[Address]) -> Fault: ...
@@ -193,16 +195,16 @@ class Fault(Protocol): ...      # no user-facing members; pass to run_for(faults
 ```python
 class SeedloopError(Exception): ...           # base for everything seedloop raises
 class DeadlockError(SeedloopError): ...         # the run is quiescent with tasks still awaiting
+class InvariantError(SeedloopError): ...        # an always(...) invariant was violated
 class BoundaryError(SeedloopError): ...         # out-of-boundary use inside a run
 class EntropyLeakError(BoundaryError): ...      # an uncontrolled entropy source was touched (audit mode)
-class InvariantError(SeedloopError): ...        # design (Phase 3): an always(...) invariant was violated
 ```
 
-`SeedloopError`, `DeadlockError`, `BoundaryError`, and `EntropyLeakError` are implemented; `InvariantError`
-arrives with the `always()` invariant API in Phase 3.
+`SeedloopError`, `DeadlockError`, `InvariantError`, `BoundaryError`, and `EntropyLeakError` are
+implemented; `EntropyLeakError` is reserved for the non-determinism auditor (still design).
 
-- **`InvariantError`** carries the invariant `name` and the violating step; it is the typical failure
-  `check` reports.
+- **`InvariantError`** carries the invariant `name` and the virtual `time` of the violation; an
+  `always(...)` property that becomes false raises it, and `check` reports it as that seed's failure.
 - **`DeadlockError`** is raised when no task can make progress and nothing is scheduled to wake one — a
   deadlock in the simulated world. seedloop raises it instead of hanging (as a real program would), so
   the deadlock surfaces as that seed's failure.

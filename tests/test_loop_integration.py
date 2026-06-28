@@ -1,4 +1,4 @@
-"""Integration tests: the loop attaches via loop_factory, and cancellation works (slice 0100)."""
+"""Integration tests: the loop attaches via loop_factory, and cancellation works."""
 
 from __future__ import annotations
 

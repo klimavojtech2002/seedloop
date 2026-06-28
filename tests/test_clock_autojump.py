@@ -1,4 +1,4 @@
-"""Virtual clock and autojump tests (slice 0110)."""
+"""Virtual clock and autojump tests."""
 
 from __future__ import annotations
 

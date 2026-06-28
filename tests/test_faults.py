@@ -1,4 +1,4 @@
-"""Network fault injection: loss, duplication, partition, reliable channel (slice 0210)."""
+"""Network fault injection: loss, duplication, partition, reliable channel."""
 
 from __future__ import annotations
 

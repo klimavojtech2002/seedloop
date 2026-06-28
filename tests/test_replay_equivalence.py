@@ -1,4 +1,4 @@
-"""The Phase-1 guarantee: same seed -> same timeline (slice 0130)."""
+"""The Phase-1 guarantee: same seed -> same timeline."""
 
 from __future__ import annotations
 
