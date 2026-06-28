@@ -44,7 +44,14 @@ class InvariantError(SeedloopError):
 class EntropyLeakError(BoundaryError):
     """An uncontrolled entropy source was touched inside a simulated run.
 
-    Defined now; the non-determinism auditor (a later slice) raises it in audit mode when code
-    reaches for real ``os.urandom``/``secrets``, real time, or unseeded randomness instead of the
-    World's seeded source (``docs/decisions.md`` ADR-0008).
+    In audit mode the non-determinism auditor raises this when code reaches for real
+    ``os.urandom``/``secrets``, real time, or the unseeded global ``random`` instead of the World's
+    seeded source (``docs/decisions.md`` ADR-0008). Carries the offending ``source``.
     """
+
+    def __init__(self, source: str) -> None:
+        super().__init__(
+            f"uncontrolled entropy source {source!r} used inside a run; route it through the seed "
+            f"(world.rng) or the virtual clock — see docs/scope.md"
+        )
+        self.source = source

@@ -51,9 +51,13 @@ def check(
     *,
     seeds: int | Iterable[int] = 1000,
     on_failure: Literal["raise", "return"] = "raise",
+    audit: bool = False,        # run each seed under the non-determinism auditor (ADR-0008)
 ) -> CheckResult: ...
 
-def replay(scenario: Scenario, *, seed: int) -> None: ...
+def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None: ...
+
+@contextmanager
+def audit_mode() -> Iterator[None]: ...   # trip on uncontrolled entropy for the duration
 
 def ensure_hash_seed(root_seed: int) -> None: ...
 ```
@@ -197,11 +201,11 @@ class SeedloopError(Exception): ...           # base for everything seedloop rai
 class DeadlockError(SeedloopError): ...         # the run is quiescent with tasks still awaiting
 class InvariantError(SeedloopError): ...        # an always(...) invariant was violated
 class BoundaryError(SeedloopError): ...         # out-of-boundary use inside a run
-class EntropyLeakError(BoundaryError): ...      # an uncontrolled entropy source was touched (audit mode)
+class EntropyLeakError(BoundaryError): ...      # uncontrolled entropy touched under audit (carries .source)
 ```
 
-`SeedloopError`, `DeadlockError`, `InvariantError`, `BoundaryError`, and `EntropyLeakError` are
-implemented; `EntropyLeakError` is reserved for the non-determinism auditor (still design).
+`SeedloopError`, `DeadlockError`, `InvariantError`, `BoundaryError`, and `EntropyLeakError` are all
+implemented; `EntropyLeakError` is raised by the non-determinism auditor under `check(..., audit=True)`.
 
 - **`InvariantError`** carries the invariant `name` and the virtual `time` of the violation; an
   `always(...)` property that becomes false raises it, and `check` reports it as that seed's failure.

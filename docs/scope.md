@@ -27,11 +27,13 @@ does not perturb the others' timelines (ADR-0009). If your code stays inside thi
 reduces to a seed you can replay forever — within a major version (ADR-0011).
 
 **How the boundary is enforced, not just stated.** The same points where the World substitutes a seeded
-source are tripwires: in audit mode an uncontrolled source — real `os.urandom`, real time, a thread, a
-real socket — raises `EntropyLeakError` instead of running silently (ADR-0008). A leak is therefore a
-loud, reproducible failure on the seed that hit it, not a guarantee you have to take on trust. The
-tripwires intercept Python-level calls; a C extension that reads the clock or the OS RNG directly, below
-Python, is not caught — the same reason C-extension drivers are out of scope above.
+source are tripwires: under `check(..., audit=True)` an uncontrolled source — real `os.urandom`, real
+time, the unseeded global `random`, a real thread — raises `EntropyLeakError` (or `BoundaryError` for the
+thread) instead of running silently (ADR-0008). A leak is therefore a loud, reproducible failure on the
+seed that hit it, not a guarantee you have to take on trust. The tripwires intercept Python-level
+attribute calls; a reference bound before the audit started (`from time import monotonic`) or a C
+extension that reads the clock or the OS RNG directly, below Python, is not caught — the same reason
+C-extension drivers are out of scope above.
 
 ## What is deliberately out of scope — and why
 
