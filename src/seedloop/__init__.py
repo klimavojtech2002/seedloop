@@ -1,8 +1,9 @@
 """seedloop — deterministic simulation testing for Python asyncio.
 
 Write a scenario against a :class:`World`, then ``check`` it across many seeds; a failing seed is
-the reproduction — ``replay`` it to debug. Phase 1 makes asyncio runs reproducible and instant; the
-simulated network and fault injection follow.
+the reproduction — ``replay`` it to debug. The deterministic core (loop, virtual clock, seeded
+entropy) and the simulated network with fault injection (loss, duplication, partitions) are in
+place; the invariant API and the worked demo are next.
 """
 
 from seedloop._entropy import ensure_hash_seed
@@ -33,4 +34,4 @@ __all__ = [
     "ensure_hash_seed",
     "replay",
 ]
-__version__ = "0.0.0"
+__version__ = "0.2.0"

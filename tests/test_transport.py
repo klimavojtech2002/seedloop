@@ -118,6 +118,26 @@ def test_bind_twice_raises() -> None:
     assert isinstance(result.error, seedloop.SeedloopError)
 
 
+def test_concurrent_recv_on_one_endpoint_raises() -> None:
+    # One endpoint has one logical receiver; a second concurrent recv fails loudly, not silently.
+    async def scenario(world: World) -> None:
+        b = world.net.bind(2)
+
+        async def waiter() -> None:
+            await b.recv()
+
+        first = asyncio.ensure_future(waiter())
+        await asyncio.sleep(0)  # let the first recv start waiting
+        await b.recv()  # second concurrent recv on the same endpoint
+        await first
+
+    result = seedloop.check(scenario, seeds=1, on_failure="return")
+    # Must be the explicit guard, not the DeadlockError two stuck recvs would otherwise cause
+    # (both are SeedloopError, so assert the specific message).
+    assert isinstance(result.error, seedloop.SeedloopError)
+    assert "concurrent recv" in str(result.error)
+
+
 def test_send_to_unbound_address_is_dropped() -> None:
     # A datagram to an unbound address is dropped cleanly, not an error (at-most-once delivery).
     errors: list[object] = []

@@ -172,6 +172,10 @@ class _Endpoint:
         self._transport._send(self, dst, msg)
 
     async def recv(self) -> tuple[Address, Message]:
+        if self._waiter is not None:
+            # One endpoint has one logical receiver; a second concurrent recv would orphan the
+            # first's waiter. Fail loudly rather than corrupt delivery silently.
+            raise SeedloopError("concurrent recv on one endpoint is not supported")
         while not self._queue:
             self._waiter = self._transport._loop.create_future()
             try:
