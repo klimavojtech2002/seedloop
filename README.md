@@ -87,10 +87,12 @@ keeps the guarantee real.
 
 ## Status
 
-The **Phase 1 deterministic core is implemented**: the custom event loop, the virtual clock with
-autojump, seeded entropy, and the `World` / `check` / `replay` API — so `asyncio` runs are reproducible
-and instant, and a failing seed replays identically. The simulated network and fault injection shown in
-the example above are the next phase; the full API target is in [docs/api.md](docs/api.md) and the
+The **deterministic core and the simulated network are implemented** (through v0.2.0): the custom event
+loop, the virtual clock with autojump, seeded entropy, the `World` / `check` / `replay` API, and the
+simulated network with fault injection (loss, duplication, partitions) — so `asyncio` runs are
+reproducible and instant, and a partition- or timing-dependent bug replays identically from its seed.
+The invariant API (`world.always`/`run_for`) and the worked Raft demo are the next phase; the full API
+target is in [docs/api.md](docs/api.md) and the
 phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists

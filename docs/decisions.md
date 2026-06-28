@@ -346,8 +346,8 @@ shipped package still has zero third-party dependencies.
 
 **Status:** Accepted
 
-**Context.** ADR-0010 gives a launcher that pins `PYTHONHASHSEED` by re-running the interpreter. The
-0130 plan leaned toward `check` re-execing once into a pinned child and sweeping there. Building it
+**Context.** ADR-0010 gives a launcher that pins `PYTHONHASHSEED` by re-running the interpreter. An
+earlier design leaned toward `check` re-execing once into a pinned child and sweeping there. Building it
 surfaced the problem: the launcher re-runs the *whole* process, and `check` typically runs under a test
 runner — implicitly re-execing `pytest` from inside a test is hostile (it restarts the entire run).
 
@@ -374,7 +374,7 @@ the *seed* chooses fault timing (which links partition, when, for how long). Bui
 showed that API couples fault injection with a time-advancing primitive (`run_for`) and a fault-handle
 constructor set — a larger surface than the fault *mechanism* itself.
 
-**Decision.** Slice 0210 implements the fault mechanism with the seed driving all message-level chaos —
+**Decision.** seedloop implements the fault mechanism with the seed driving all message-level chaos —
 per-message loss and duplication drawn from the `"faults"` sub-stream, partition reachability evaluated
 at delivery time — while the scenario drives *topology* explicitly: `world.net.partition(*groups)` and
 `world.net.heal()`. A duplicate shares the original message's `mid` (it *is* the same message arriving

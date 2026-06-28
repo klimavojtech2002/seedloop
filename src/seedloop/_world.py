@@ -1,12 +1,12 @@
 """The World: everything for one deterministic run, derived from one seed.
 
-A run is a pure function of its seed. The World assembles the deterministic loop and virtual clock
-(slices 0100/0110) and the seeded entropy (slice 0120) into one object, exposes the user's seeded
-``rng`` and the virtual clock, and records a timeline so two runs of a seed can be compared. Users
-do not construct a World; ``check``/``replay`` build it and pass it to the scenario.
+A run is a pure function of its seed. The World assembles the deterministic loop, the virtual clock,
+and the seeded entropy into one object, exposes the user's seeded ``rng`` and the virtual clock, and
+records a timeline so two runs of a seed can be compared. Users do not construct a World;
+``check``/``replay`` build it and pass it to the scenario.
 
-Scheduling stays faithful FIFO (ADR-0012), so in Phase 1 the seed's observable effect is ``rng`` and
-timer timing; interleaving exploration arrives with the simulated network in Phase 2.
+Scheduling stays faithful FIFO (ADR-0012), so the seed's observable effect is ``rng``, timer timing,
+and the simulated network's delivery timing — not callback order.
 """
 
 from __future__ import annotations
