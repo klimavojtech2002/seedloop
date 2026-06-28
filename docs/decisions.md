@@ -182,6 +182,13 @@ seed that triggered it.
 - Trade-off: a leak on a path no test exercises is not caught. Accepted; the seed sweep is what drives
   paths, and static scanning is deferred (below) rather than relied upon.
 
+**Implemented** as opt-in `check(..., audit=True)` / `replay(..., audit=True)` (and the `audit_mode()`
+context manager). The tripwires cover real time (`time.*`), the unseeded global `random.*`,
+`os.urandom`/`secrets`, and a bare `threading.Thread`; the loop already rejects the I/O boundary
+(`run_in_executor`, sockets, DNS) in every mode. Interception is by module attribute, so it catches the
+common call form (`time.monotonic()`) but not a name bound before the audit started — the same caveat as
+the CSPRNG shim, stated in `scope.md`.
+
 ---
 
 ## ADR-0009 — Entropy is derived by hierarchical seed-splitting, not one shared stream

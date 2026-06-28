@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
   toggled flaw (a missing single-vote rule) lets a seed sweep find a split-brain — two leaders in one
   term — and replay it from the seed; the corrected election passes the same sweep. The worked proof that
   seedloop finds and replays a real class of consensus bug.
+- The non-determinism auditor: `check(scenario, ..., audit=True)` (and `seedloop.audit_mode()`) trips on
+  uncontrolled entropy inside a run — real time, the unseeded global `random`, `os.urandom`/`secrets`,
+  and a bare `threading.Thread` raise `EntropyLeakError`/`BoundaryError` instead of leaking silently, so
+  the determinism boundary is enforced, not just stated.
 
 ## [0.2.0] — 2026-06-28
 
