@@ -55,6 +55,16 @@ def test_on_failure_raise_tags_the_seed() -> None:
     assert any("failing seed=" in note for note in exc_info.value.__notes__)
 
 
+def test_keyboardinterrupt_propagates_and_is_not_a_failing_seed() -> None:
+    # check catches Exception, not BaseException, so an abort (Ctrl-C) propagates out of the sweep
+    # and is never mis-tagged as a failing seed — even with on_failure="return".
+    async def scenario(world: World) -> None:
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        seedloop.check(scenario, seeds=5, on_failure="return")
+
+
 def test_deadlock_surfaces_as_failure_not_hang() -> None:
     async def scenario(world: World) -> None:
         await world._loop.create_future()  # never resolved, nothing scheduled -> deadlock

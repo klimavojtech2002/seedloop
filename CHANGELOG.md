@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-28
+
+Phase 3: ergonomics and the worked proof — the invariant API, the Raft demo, and the enforced boundary.
+
 ### Added
 - Invariant API: `world.always(predicate, *, name)` registers a continuous safety property checked after
   every step; the first step it is false raises `InvariantError(name)`, which `check` reports and `replay`

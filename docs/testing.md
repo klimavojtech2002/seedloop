@@ -47,7 +47,8 @@ change.
 - **Property-based / metamorphic** (Hypothesis, ADR-0004) — generate seeds and scenario inputs, assert
   invariants hold and that `replay` of any generated seed reproduces its outcome. Metamorphic relation:
   reordering independent `send`s in source must not change a timeline the seed already determines.
-  Hypothesis also shrinks a failing case to a minimal seed/input.
+  Hypothesis also shrinks a failing case to a minimal seed/input. Ships as an optional `seedloop[hypothesis]`
+  extra to keep the core dependency-free (ADR-0017) — deferred, not yet wired in.
 - **Fault injection** — partitions, slow links, drops, duplications, crashes fire on the seed's schedule;
   tests assert the same seed injects the same faults at the same virtual times, and that a known
   partition-dependent bug is surfaced and then replayed identically (the Phase 2 payoff).

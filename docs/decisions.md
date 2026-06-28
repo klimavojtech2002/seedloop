@@ -67,7 +67,8 @@ reports its seed; `replay(scenario, seed)` reproduces the exact timeline on dema
 - Debugging a concurrency bug becomes ordinary: replay the seed under a debugger as many times as
   needed.
 - Requires total discipline about entropy — any uncontrolled source (see scope.md) breaks the
-  contract, which is why the boundary is drawn so strictly and a non-determinism auditor is planned.
+  contract, which is why the boundary is drawn so strictly and enforced by the non-determinism auditor
+  (ADR-0008, implemented).
 
 ---
 

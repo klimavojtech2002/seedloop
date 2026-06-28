@@ -119,6 +119,31 @@ def test_reliable_channel_no_loss_in_order() -> None:
     assert msgs == [0, 1, 2, 3, 4]  # no loss, no dup, in send order
 
 
+def test_reliable_deliveries_carry_latency_and_are_non_decreasing() -> None:
+    # A reliable link delivers at non-decreasing virtual times that carry the drawn latency — not
+    # collapsed to the send instant. Order alone (the test above) does not catch that collapse.
+    async def scenario(world: World) -> None:
+        a = world.net.bind(1, reliable=True)
+        b = world.net.bind(2)
+
+        async def receiver() -> None:
+            for _ in range(5):
+                await b.recv()
+
+        task = asyncio.ensure_future(receiver())
+        for i in range(5):
+            await a.send(2, i)
+        await task
+
+    timeline = _run_one(scenario, 1)
+    deliver_times = [
+        cast("float", e[0]) for e in timeline if isinstance(e, tuple) and e[1] == "deliver"
+    ]
+    assert len(deliver_times) == 5
+    assert deliver_times == sorted(deliver_times)  # non-decreasing per (src, dst)
+    assert all(t > 0 for t in deliver_times)  # real latency, not min-collapsed to the send instant
+
+
 def test_replay_equivalence_under_faults() -> None:
     async def scenario(world: World) -> None:
         a = world.net.bind(1, loss=0.3, duplicate=0.3)

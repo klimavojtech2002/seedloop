@@ -31,10 +31,10 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this (`World`, `check`, `replay`, and the network —
-`world.net` with loss, duplication, and partitions — are implemented; the invariant/fault-schedule
-`world.always` invariant is implemented; the `world.run_for` fault-schedule call is the next phase,
-specified in [docs/api.md](docs/api.md)):
+world it fully controls. A test looks like this (`World`, `check`, `replay`, the network `world.net`
+with loss/duplication/partitions, the `world.always` invariant API, and the `audit=True`
+non-determinism auditor are all implemented; the seed-scheduled `world.run_for` fault schedule is the
+next phase, specified in [docs/api.md](docs/api.md)):
 
 ```python
 import seedloop
@@ -91,6 +91,9 @@ out of scope.
 - **Seeded randomness** everywhere, so a run is a pure function of its seed.
 - A **simulated network** with seeded latency, reordering, message loss, and partitions.
 - **Fault injection** driven by the seed, so chaos is reproducible rather than random.
+- **Invariants** — `world.always(...)` checks a continuous safety property at every step.
+- A **non-determinism auditor** — `audit=True` turns any uncontrolled entropy source into a loud,
+  reproducible failure, so the determinism boundary is enforced, not just stated.
 - **Seed replay** — the whole point: any failure reduces to a single integer you can replay forever.
 
 ## Scope — what it tests, and what it deliberately does not
@@ -112,14 +115,14 @@ keeps the guarantee real.
 
 ## Status
 
-The **deterministic core and the simulated network are implemented** (through v0.2.0): the custom event
-loop, the virtual clock with autojump, seeded entropy, the `World` / `check` / `replay` API, and the
-simulated network with fault injection (loss, duplication, partitions) — so `asyncio` runs are
-reproducible and instant, and a partition- or timing-dependent bug replays identically from its seed.
-The invariant API (`world.always`) and the worked Raft demo are implemented (the demo above runs today);
-the seed-scheduled fault-schedule API (`world.run_for`) and the non-determinism auditor are the next
-phase. The full API target is in [docs/api.md](docs/api.md) and the phased build in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The planned build is **complete through v0.3.0**: the deterministic core (custom event loop, virtual
+clock with autojump, seeded entropy, the `World` / `check` / `replay` API), the simulated network with
+fault injection (loss, duplication, partitions), the `world.always` invariant API, the non-determinism
+auditor (`audit=True`), and the worked Raft demo (which runs today) — so `asyncio` runs are reproducible
+and instant, a partition- or timing-dependent bug replays identically from its seed, and an uncontrolled
+entropy source fails loudly under audit. Deferred: the seed-scheduled `world.run_for` fault schedule and
+an optional Hypothesis integration (`seedloop[hypothesis]`). The full API target is in
+[docs/api.md](docs/api.md) and the phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists
 

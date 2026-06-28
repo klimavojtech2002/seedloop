@@ -4,9 +4,9 @@ The surface a user writes against. This is the design target for Phases 1–3. *
 1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
 `CheckResult`, `ensure_hash_seed`, and the error types. **Phase 2:** the network port
 (`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
-partition/heal, and the reliable channel. **Phase 3 so far:** the invariant API (`world.always`,
-`InvariantError`). **Still design:** seed-scheduled faults
-(`run_for`/`partition()`/`slow_link()`/`crash()` handles).
+partition/heal, and the reliable channel. **Phase 3:** the invariant API (`world.always`,
+`InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`). **Still design:**
+seed-scheduled faults (`run_for`/`partition()`/`slow_link()`/`crash()` handles).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.

@@ -34,6 +34,20 @@ def test_substreams_are_distinct() -> None:
     ]
 
 
+def test_world_rng_is_the_user_substream_distinct_from_net() -> None:
+    # World.rng must be the "user" sub-stream — not the net/faults stream. Mislabeling it would
+    # correlate user entropy with network timing while still passing every replay test (the streams
+    # stay separate Random instances), so pin the label here at the World API level.
+    from seedloop._world import World
+
+    assert [World(7).rng.random() for _ in range(5)] == [
+        substream(7, "user").random() for _ in range(5)
+    ]
+    assert [World(7).rng.random() for _ in range(5)] != [
+        substream(7, "net").random() for _ in range(5)
+    ]
+
+
 def test_substreams_are_independent() -> None:
     # The ADR-0009 property: drawing extra values from one component's stream does not change
     # another component's sequence for the same root seed. Each stream is derived separately, so
