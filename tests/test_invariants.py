@@ -46,6 +46,21 @@ def test_violated_invariant_raises_with_name() -> None:
         raise AssertionError("replay did not reproduce the invariant violation")
 
 
+def test_invariant_error_carries_the_violation_time() -> None:
+    # InvariantError.time is a documented public attribute — it must be the virtual time of the
+    # violation, not a placeholder.
+    async def scenario(world: World) -> None:
+        breached = {"v": False}
+        world.always(lambda: not breached["v"], name="flips-at-1")
+        await asyncio.sleep(1)
+        breached["v"] = True  # false from the next step, which runs at t=1.0
+        await asyncio.sleep(1)
+
+    result = seedloop.check(scenario, seeds=1, on_failure="return")
+    assert isinstance(result.error, seedloop.InvariantError)
+    assert result.error.time == 1.0
+
+
 def test_invariant_false_at_first_step_fires() -> None:
     async def scenario(world: World) -> None:
         world.always(lambda: False, name="never")

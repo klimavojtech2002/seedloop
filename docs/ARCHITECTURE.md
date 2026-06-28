@@ -1,10 +1,11 @@
 # Architecture
 
 How `seedloop` makes Python `asyncio` deterministic, how a run works end to end, and the phased build
-that gets there. The Phase 1 deterministic core and the Phase 2 datagram network are built; faults and
-the demo are the remaining phases. The determinism boundary — what is controlled and what is deliberately
-not — is in [scope.md](scope.md), and the reasoning behind the non-obvious choices is in
-[decisions.md](decisions.md).
+that gets there. Phases 1–3 are built: the deterministic core, the simulated network with fault
+injection, the invariant API, the non-determinism auditor, and the worked Raft demo. The seed-scheduled
+`run_for` fault schedule and an optional Hypothesis integration are deferred. The determinism boundary —
+what is controlled and what is deliberately not — is in [scope.md](scope.md), and the reasoning behind
+the non-obvious choices is in [decisions.md](decisions.md).
 
 ## The key fact that makes this tractable
 
