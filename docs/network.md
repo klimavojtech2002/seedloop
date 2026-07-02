@@ -38,8 +38,8 @@ seed decides, per message:
 |--------|--------------------|
 | **Latency** | A delay drawn from a configured distribution; the delivery event is scheduled at `now + delay`. |
 | **Reordering** | Emergent, not separately injected: two messages sent close together draw independent latencies, so arrival order can differ from send order. |
-| **Drop** | With the link's loss probability, no delivery event is scheduled. |
-| **Duplication** | With the link's duplication probability, two delivery events are scheduled (independent latencies). |
+| **Drop** | With the link's loss probability, no delivery event is scheduled (the message still draws its `net` latency, so dropping it does not shift other messages). |
+| **Duplication** | With the link's duplication probability, a second delivery is scheduled — the original's latency drawn from `net`, the duplicate's from `faults`. |
 | **Partition** | A reachability predicate on the link; while open, a delivery that fires is dropped. |
 
 The distributions and probabilities are run parameters with documented defaults; pinning them forces a
@@ -64,13 +64,15 @@ link delivers whole messages, reliably and in order; it does not pretend to be a
 
 ## Faults
 
-Faults draw from the seed's `"faults"` sub-stream (independent of `"net"`, so enabling a fault does not
-shift surviving messages' latencies). *Implemented:*
+Every `send` draws exactly one latency from `"net"`, before any fault is decided; faults draw from the
+separate `"faults"` sub-stream. So a realized drop or duplicate never shifts another message's latency —
+a dropped message still consumed its `"net"` draw, and a duplicate's extra delivery draws from `"faults"`.
+*Implemented:*
 
 - **Loss / duplication** — `bind(address, loss=p, duplicate=q)` sets per-message probabilities on that
   endpoint's outgoing links. At send the seed decides: drop (schedule no delivery, recorded as `drop`) or
-  duplicate (a second delivery with an independent latency, recorded as `duplicate`, sharing the
-  message's id). Default 0.0.
+  duplicate (a second delivery whose latency is drawn from `"faults"`, recorded as `duplicate`, sharing
+  the message's id). Default 0.0.
 - **Partition** — `world.net.partition(*groups)` splits the network; nodes in different groups cannot
   reach each other until `world.net.heal()`. A node in no listed group stays connected to everyone.
   Reachability is checked *when a delivery fires* — a partition that opened in flight cuts the message
