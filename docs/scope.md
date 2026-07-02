@@ -28,12 +28,15 @@ reduces to a seed you can replay forever — within a major version (ADR-0011).
 
 **How the boundary is enforced, not just stated.** The same points where the World substitutes a seeded
 source are tripwires: under `check(..., audit=True)` an uncontrolled source — real `os.urandom`, real
-time, the unseeded global `random`, a real thread — raises `EntropyLeakError` (or `BoundaryError` for the
-thread) instead of running silently (ADR-0008). A leak is therefore a loud, reproducible failure on the
+clocks (wall, monotonic, perf-counter, CPU, and current-time calendar reads), the unseeded global
+`random`, a real thread — raises `EntropyLeakError` (or `BoundaryError` for the thread) instead of
+running silently (ADR-0008). A leak is therefore a loud, reproducible failure on the
 seed that hit it, not a guarantee you have to take on trust. The tripwires intercept Python-level
-attribute calls; a reference bound before the audit started (`from time import monotonic`) or a C
-extension that reads the clock or the OS RNG directly, below Python, is not caught — the same reason
-C-extension drivers are out of scope above.
+attribute calls; a reference bound before the audit started (`from time import monotonic`), a call
+that reads the clock in C below the `time.*` attributes (`datetime.now()`/`utcnow()`), or a C
+extension that reads the clock or the OS RNG directly is not caught — the same reason C-extension
+drivers are out of scope above. Keep the real clock out of a run; the auditor closes the common
+Python paths, it does not replace the discipline.
 
 ## What is deliberately out of scope — and why
 

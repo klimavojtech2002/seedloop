@@ -49,6 +49,7 @@ def test_real_wall_clock_trips() -> None:
         _scenario_calling(lambda: time.time()), seeds=1, on_failure="return", audit=True
     )
     assert isinstance(result.error, seedloop.EntropyLeakError)
+    assert result.error.source == "time.time"
 
 
 def test_os_urandom_trips_under_audit() -> None:
@@ -64,6 +65,7 @@ def test_secrets_trips_under_audit() -> None:
         _scenario_calling(lambda: secrets.token_bytes(8)), seeds=1, on_failure="return", audit=True
     )
     assert isinstance(result.error, seedloop.EntropyLeakError)
+    assert result.error.source == "secrets/os.urandom"
 
 
 def test_global_random_trips() -> None:
@@ -75,38 +77,66 @@ def test_global_random_trips() -> None:
 
 
 def test_audit_covers_every_entropy_drawing_random_function() -> None:
-    # A completeness guard, enumerated independently of _audit.py: if the auditor's list drops an
-    # entropy-drawing random.* (e.g. expovariate), the audit would pass clean on a real leak.
-    from seedloop._audit import _ENTROPY_SURFACES
+    # A completeness guard derived from the stdlib, not a hand-maintained copy: the auditor must
+    # cover exactly the entropy-drawing module-level random.* functions — random.__all__ minus the
+    # non-drawing seeding/state names and the Random classes. An entropy function added in a future
+    # Python (or a quietly dropped one) breaks this, so a real leak cannot pass clean.
+    from seedloop._audit import _RANDOM_FUNCS
 
-    covered = {name for _, _, name in _ENTROPY_SURFACES if name.startswith("random.")}
-    expected = {
-        f"random.{fn}"
-        for fn in (
-            "random",
-            "uniform",
-            "triangular",
-            "randint",
-            "randrange",
-            "choice",
-            "choices",
-            "shuffle",
-            "sample",
-            "getrandbits",
-            "randbytes",
-            "betavariate",
-            "expovariate",
-            "gammavariate",
-            "gauss",
-            "lognormvariate",
-            "normalvariate",
-            "vonmisesvariate",
-            "paretovariate",
-            "weibullvariate",
+    drawing = set(random.__all__) - {"Random", "SystemRandom", "seed", "getstate", "setstate"}
+    assert set(_RANDOM_FUNCS) == drawing
+
+
+def test_cpu_clocks_trip_under_audit() -> None:
+    # process_time/thread_time and POSIX clock_gettime (and their _ns forms) are real,
+    # nondeterministic clocks with no pure form, so they must trip like monotonic/perf_counter. The
+    # POSIX-only names are absent on Windows and skipped there; CI exercises them on Linux/macOS.
+    for name in (
+        "process_time",
+        "process_time_ns",
+        "thread_time",
+        "thread_time_ns",
+        "clock_gettime",
+        "clock_gettime_ns",
+    ):
+        if not hasattr(time, name):  # pragma: no cover - platform-dependent
+            continue
+        result = seedloop.check(
+            _scenario_calling(lambda n=name: getattr(time, n)()),
+            seeds=1,
+            on_failure="return",
+            audit=True,
         )
-        if hasattr(random, fn)
-    }
-    assert not (expected - covered), f"entropy-drawing random.* not audited: {expected - covered}"
+        assert isinstance(result.error, seedloop.EntropyLeakError), name
+        assert result.error.source == f"time.{name}", name
+
+
+def test_current_time_calendar_functions_trip_only_in_their_now_form() -> None:
+    # gmtime()/localtime()/ctime()/asctime()/strftime(fmt) read the *current* time and must trip;
+    # given an explicit timestamp the same functions are pure conversions and must still work, so
+    # the tripwire fires on the now-reading form only (no false positive on a pure convert).
+    now_forms = (
+        lambda: time.gmtime(),
+        lambda: time.localtime(),
+        lambda: time.ctime(),
+        lambda: time.asctime(),
+        lambda: time.strftime("%Y"),
+    )
+    for fn in now_forms:
+        result = seedloop.check(_scenario_calling(fn), seeds=1, on_failure="return", audit=True)
+        assert isinstance(result.error, seedloop.EntropyLeakError)
+
+    t0 = time.gmtime(0)
+
+    async def pure_conversions(world: World) -> None:
+        # Explicit timestamps: deterministic, must not trip under audit.
+        world.record(("gmtime", time.gmtime(0)))
+        world.record(("localtime", time.localtime(0)))
+        world.record(("ctime", time.ctime(0)))
+        world.record(("asctime", time.asctime(t0)))
+        world.record(("strftime", time.strftime("%Y", t0)))
+
+    seedloop.replay(pure_conversions, seed=1, audit=True)  # must not raise
 
 
 def test_every_listed_random_function_actually_trips() -> None:
