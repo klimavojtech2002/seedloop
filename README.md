@@ -115,7 +115,7 @@ keeps the guarantee real.
 
 ## Status
 
-The planned build is **complete through v0.3.0**: the deterministic core (custom event loop, virtual
+The planned build is **complete**: the deterministic core (custom event loop, virtual
 clock with autojump, seeded entropy, the `World` / `check` / `replay` API), the simulated network with
 fault injection (loss, duplication, partitions), the `world.always` invariant API, the non-determinism
 auditor (`audit=True`), and the worked Raft demo (which runs today) — so `asyncio` runs are reproducible

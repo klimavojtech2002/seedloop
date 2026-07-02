@@ -1,7 +1,8 @@
 """Exceptions seedloop raises.
 
-One specific exception per failure mode; nothing is swallowed. The hierarchy is rooted at
-``SeedloopError`` so everything seedloop raises can be caught with a single class.
+One specific exception per failure mode, and seedloop never catches and hides one itself (no bare
+``except``). The hierarchy is rooted at ``SeedloopError`` so everything seedloop raises can be
+caught with a single class.
 """
 
 from __future__ import annotations
