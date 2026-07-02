@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-06-30
+
+Determinism and boundary-fidelity fixes found by an independent audit. All three were silent: a
+clean run looked correct while a guarantee leaked.
+
+### Fixed
+- **Teardown cancellation was nondeterministic.** Tasks still pending when a scenario returned were
+  cancelled in `asyncio.all_tasks()` order — a set iterated in `id()`-hash order, which varies per
+  process. A node that recorded in its cancel handler then produced a run-varying timeline, breaking
+  "same seed → same timeline". The loop now stamps every task with a creation index and the World
+  cancels in that deterministic order.
+- **A network fault could shift other messages' latencies.** Latency was drawn only when a delivery
+  was scheduled, so a dropped message skipped its `net` draw and a duplicate took an extra one,
+  shifting every later message's latency. `send` now draws its `net` latency once, before any fault
+  decision; a duplicate's extra delivery draws from the `faults` sub-stream. Enabling a fault no
+  longer perturbs surviving messages — the independence the docs always claimed.
+- **The audit-mode clock tripwires were incomplete.** `time.process_time`/`thread_time` (and their
+  `_ns` forms) and current-time calendar reads (`gmtime`/`localtime`/`ctime`/`asctime`/`strftime`
+  with no explicit timestamp) passed clean despite the docs claiming real time was closed. They now
+  trip; the same functions given an explicit timestamp stay pure conversions and still work.
+
 ## [0.3.0] — 2026-06-28
 
 Phase 3: ergonomics and the worked proof — the invariant API, the Raft demo, and the enforced boundary.
