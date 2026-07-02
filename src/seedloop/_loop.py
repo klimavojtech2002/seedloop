@@ -34,12 +34,23 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         # so equal deadlines fire in scheduling order.
         self._sl_timers: list[tuple[float, int, asyncio.TimerHandle]] = []
         self._sl_timer_seq = 0
+        self._sl_task_seq = 0  # monotonic creation index stamped on every task (see create_task)
         # Optional hook the World uses to check invariants after each step; None by default, so a
         # run without invariants is unchanged. It may raise to fail the run.
         self._sl_after_step: Callable[[], None] | None = None
 
     def time(self) -> float:
         return self._sl_time
+
+    def create_task(self, coro: Any, *args: Any, **kwargs: Any) -> asyncio.Task[Any]:
+        # Stamp every task with a monotonic creation index. Teardown cancels still-pending tasks,
+        # and cancellation can be observable (a node that records in its cancel handler), so order
+        # must be deterministic. asyncio.all_tasks() is a set in id()-hash order (varies per
+        # process), so the World sorts by this index to cancel in creation order.
+        task = super().create_task(coro, *args, **kwargs)
+        task._sl_seq = self._sl_task_seq  # type: ignore[attr-defined]  # deterministic order key
+        self._sl_task_seq += 1
+        return task
 
     def call_at(  # type: ignore[override]
         self, when: float, callback: Any, *args: Any, context: Any = None
