@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import seedloop
 from seedloop._run import _run_one
@@ -78,3 +79,35 @@ def test_replay_public_entry_runs() -> None:
 
     seedloop.replay(scenario, seed=5)
     assert ran == [5]
+
+
+class _CancelRecorder:
+    # A node that loops forever and records when it is cancelled, so the teardown cancellation order
+    # becomes visible in the timeline.
+    def __init__(self, world: World, ident: int) -> None:
+        self._world, self._ident = world, ident
+
+    async def run(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            self._world.record(("cancelled", self._ident))
+            raise
+
+
+def test_teardown_cancellation_order_is_deterministic() -> None:
+    # Nodes still running when the scenario returns are cancelled at teardown. A node that records
+    # in its cancel handler makes that order observable, and the order must be a pure function of
+    # seed — not the id()-hash iteration order of asyncio.all_tasks(), which varies run to run. The
+    # same seed, run many times in one process, must yield one identical timeline, in task-creation
+    # order.
+    async def scenario(world: World) -> None:
+        for i in range(8):
+            world.start(_CancelRecorder(world, i))
+        await asyncio.sleep(0)  # the scenario returns while all eight loop -> teardown cancels them
+
+    timelines = {_run_one(scenario, 7) for _ in range(20)}
+    assert len(timelines) == 1  # deterministic across runs in one process
+    order = [cast("tuple[object, object]", e)[1] for e in next(iter(timelines))]
+    assert order == [("cancelled", i) for i in range(8)]  # cancelled in creation order

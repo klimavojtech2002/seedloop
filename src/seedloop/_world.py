@@ -104,7 +104,11 @@ class World:
             # Cancel every task still pending — started nodes and any the scenario spawned — and let
             # the cancellations process, so the loop closes without "Task was destroyed but it is
             # pending" warnings (a node loop that never returns, or a recv stuck under a fault).
+            # all_tasks() is a set in id()-hash order (varies per process); sort by the loop's
+            # creation index so cancellation — which a node can observe in its cancel handler — runs
+            # in a deterministic, seed-independent order and the timeline stays reproducible.
             pending = [t for t in asyncio.all_tasks(self._loop) if not t.done()]
+            pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
             for task in pending:
                 task.cancel()
             if pending:
