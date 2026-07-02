@@ -5,10 +5,11 @@ latency from the seed's ``"net"`` sub-stream and schedules a delivery at ``now +
 blocks in virtual time until a message is queued. Reordering is emergent — two messages sent close
 together draw independent latencies, so arrival order can differ from send order, reproducibly.
 
-Faults — loss, duplication, and partitions — are drawn from the seed's ``"faults"`` sub-stream
-(independent of ``"net"``, so enabling a fault does not shift surviving messages' latencies). An
-endpoint can opt into a reliable, ordered channel. No real socket exists; the "network" is queues
-and timers.
+Every ``send`` draws exactly one latency from ``"net"``, before any fault is decided. Faults — loss,
+duplication, and partitions — draw from the separate ``"faults"`` sub-stream, so a realized drop or
+duplicate never shifts another message's latency: a dropped message still consumed its ``"net"``
+draw, and a duplicate's extra delivery draws from ``"faults"``. An endpoint can opt into a reliable,
+ordered channel. No real socket exists; the "network" is queues and timers.
 """
 
 from __future__ import annotations
@@ -110,25 +111,30 @@ class Transport:
         mid = self._next_mid
         self._next_mid += 1
         self._timeline.record((self._loop.time(), "send", mid, src, dst))
+        # Draw the message's network latency once per send, before any fault decision, so the "net"
+        # sub-stream advances by exactly one draw per send whatever a fault does. A realized drop or
+        # duplicate must not shift other messages' latencies (docs/network.md); a dropped message
+        # still consumes its draw, and a duplicate's extra delivery draws from "faults" below.
+        latency = self._net.uniform(_LAT_MIN, _LAT_MAX)
         if endpoint._reliable:
-            self._schedule_reliable(mid, src, dst, msg)
+            self._schedule_reliable(mid, src, dst, msg, latency)
             return
         if endpoint._loss > 0.0 and self._faults.random() < endpoint._loss:
             self._timeline.record((self._loop.time(), "drop", mid, src, dst))
             return
-        self._schedule_delivery(mid, src, dst, msg)
-        if endpoint._duplicate > 0.0 and self._faults.random() < endpoint._duplicate:
-            self._timeline.record((self._loop.time(), "duplicate", mid, src, dst))
-            self._schedule_delivery(mid, src, dst, msg)
-
-    def _schedule_delivery(self, mid: int, src: Address, dst: Address, msg: Message) -> None:
-        latency = self._net.uniform(_LAT_MIN, _LAT_MAX)
         self._loop.call_later(latency, self._deliver, mid, src, dst, msg)
+        if endpoint._duplicate > 0.0 and self._faults.random() < endpoint._duplicate:
+            # The duplicate is a fault artifact, so its extra delivery time is drawn from the
+            # "faults" sub-stream, not "net" — enabling duplication does not perturb "net".
+            self._timeline.record((self._loop.time(), "duplicate", mid, src, dst))
+            dup_latency = self._faults.uniform(_LAT_MIN, _LAT_MAX)
+            self._loop.call_later(dup_latency, self._deliver, mid, src, dst, msg)
 
-    def _schedule_reliable(self, mid: int, src: Address, dst: Address, msg: Message) -> None:
+    def _schedule_reliable(
+        self, mid: int, src: Address, dst: Address, msg: Message, latency: float
+    ) -> None:
         # Non-decreasing delivery times per (src, dst); equal times fire in send order via the timer
         # (when, seq) tie-break — so a reliable link delivers in order, with no loss or duplication.
-        latency = self._net.uniform(_LAT_MIN, _LAT_MAX)
         key = (src, dst)
         when = max(self._loop.time() + latency, self._reliable_clock.get(key, 0.0))
         self._reliable_clock[key] = when

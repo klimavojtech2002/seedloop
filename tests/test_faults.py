@@ -229,25 +229,113 @@ def test_sweep_finds_a_loss_triggered_failure() -> None:
 # --- the slice's own invariants ---
 
 
-def test_fault_draws_do_not_perturb_net_latencies() -> None:
-    # Loss draws come from the "faults" sub-stream, not "net": taking a loss draw must not shift the
-    # latencies of surviving messages. loss=0 and a tiny loss>0 (which draws but ~never drops) must
-    # produce identical delivery times. (If loss drew from "net", they would diverge.)
-    def deliver_times(loss: float) -> list[object]:
+def test_fault_outcomes_do_not_perturb_net_latencies() -> None:
+    # The "net" sub-stream advances exactly once per send, before any fault decision, so neither a
+    # fault *check* nor a realized drop or duplicate shifts another message's latency. A first
+    # message that is always-delivered, always-dropped, or always-duplicated must leave the delivery
+    # time of a following clean message unchanged. (Drawing the latency only on delivery, or the
+    # duplicate's latency from "net", would shift the survivor.)
+    def watched_deliver_time(first_loss: float, first_duplicate: float) -> list[object]:
         async def scenario(world: World) -> None:
-            a = world.net.bind(1, loss=loss)
-            world.net.bind(2)
-            for i in range(5):
-                await a.send(2, i)
+            faulty = world.net.bind(1, loss=first_loss, duplicate=first_duplicate)
+            clean = world.net.bind(2)
+            world.net.bind(3)
+            await faulty.send(3, "faulty")  # mid 0: its fate must not move the next message
+            await clean.send(3, "watched")  # mid 1: always delivered; its time is the probe
             await asyncio.sleep(1)
 
         return [
             cast("tuple[object, ...]", e)[0]
-            for e in _run_one(scenario, 1)
+            for e in _run_one(scenario, 5)
             if cast("tuple[object, ...]", e)[1] == "deliver"
+            and cast("tuple[object, ...]", e)[2] == 1
         ]
 
-    assert deliver_times(0.0) == deliver_times(1e-12)
+    baseline = watched_deliver_time(0.0, 0.0)
+    assert len(baseline) == 1  # the watched message is delivered
+    assert watched_deliver_time(1.0, 0.0) == baseline  # first always dropped -> watched unshifted
+    assert (
+        watched_deliver_time(0.0, 1.0) == baseline
+    )  # first always duplicated -> watched unshifted
+
+
+def test_partition_cuts_a_reliable_link() -> None:
+    # Reliability is no-loss and in-order on a connected path, but a partition still cuts the link
+    # while it is open: end-to-end reliability cannot defeat a network split (docs/network.md).
+    got: list[object] = []
+
+    async def scenario(world: World) -> None:
+        a = world.net.bind(1, reliable=True)
+        b = world.net.bind(2)
+
+        async def receiver() -> None:
+            got.append(await b.recv())
+
+        task = asyncio.ensure_future(receiver())
+        world.net.partition({1}, {2})
+        await a.send(2, "cut")  # cut by the open partition, even though the link is reliable
+        await asyncio.sleep(1)
+        world.net.heal()
+        await a.send(2, "through")  # delivered once connectivity is restored
+        await task
+
+    seedloop.replay(scenario, seed=1)
+    assert got == [(1, "through")]
+    assert "drop-partitioned" in _kinds(_run_one(scenario, 1))
+
+
+def test_unpartitioned_node_reaches_everyone() -> None:
+    # partition(*groups) splits the listed groups; a node in NO listed group stays connected to
+    # everyone. Every other partition test puts both ends in a group, so this exercises that branch.
+    got: list[object] = []
+
+    async def scenario(world: World) -> None:
+        a = world.net.bind(0)
+        b = world.net.bind(1)
+
+        async def receiver() -> None:
+            got.append(await b.recv())
+
+        task = asyncio.ensure_future(receiver())
+        world.net.partition({0})  # node 1 is in no group -> reachable from everyone
+        await a.send(1, "through")
+        await task
+
+    seedloop.replay(scenario, seed=1)
+    assert got == [(0, "through")]
+    assert "drop-partitioned" not in _kinds(_run_one(scenario, 1))
+
+
+def test_duplication_is_a_strict_subset() -> None:
+    # duplicate=p duplicates a strict subset, mirroring loss=p dropping a strict subset. Only
+    # duplicate=1.0 is asserted elsewhere; without this, always-duplicating (ignoring the random
+    # draw) passes clean.
+    async def scenario(world: World) -> None:
+        a = world.net.bind(0, duplicate=0.5)
+        world.net.bind(1)
+        for i in range(20):
+            await a.send(1, i)
+        await asyncio.sleep(1)
+
+    kinds = _kinds(_run_one(scenario, 1))
+    assert 0 < kinds.count("duplicate") < 20  # duplicate=0.5 duplicates some, not all
+
+
+def test_delivered_message_waits_in_queue_until_recv() -> None:
+    # A message arriving before recv is called is queued and returned by the next recv (the _enqueue
+    # path with no waiter). Without this, breaking that guard is swallowed by the loop's callback
+    # error handling and goes unnoticed — recv would then block and the run would deadlock.
+    got: list[object] = []
+
+    async def scenario(world: World) -> None:
+        a = world.net.bind(0)
+        b = world.net.bind(1)
+        await a.send(1, "queued")
+        await asyncio.sleep(0.1)  # delivery fires into b's queue while no recv is waiting
+        got.append(await b.recv())  # retrieves the already-queued message
+
+    seedloop.replay(scenario, seed=1)
+    assert got == [(0, "queued")]
 
 
 class _ForeverNode:
