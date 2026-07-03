@@ -15,8 +15,8 @@ All notable changes to this project are documented here. The format follows
 - **Teardown left crashed-node exceptions unretrieved.** When the scenario itself raised, or when a
   second started node failed behind the one surfaced, the extra task exceptions were never read and
   asyncio logged "Task exception was never retrieved" at garbage collection. Teardown now retrieves
-  every started task's exception after cancellation; which exception a failing run raises is
-  unchanged.
+  every non-cancelled started task's exception after cancellation; which exception a failing run
+  raises is unchanged.
 
 ## [0.3.1] — 2026-06-30
 

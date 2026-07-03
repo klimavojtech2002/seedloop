@@ -8,6 +8,8 @@ runs, and replay it exactly from a seed.
 It brings the FoundationDB / TigerBeetle / Antithesis style of reliability testing — until now living
 only in Rust, C++, and Java — to Python's `asyncio`, as a `pip`-installable library.
 
+[![CI](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml/badge.svg)](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/seedloop)](https://pypi.org/project/seedloop/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## The problem
