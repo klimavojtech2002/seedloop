@@ -338,6 +338,50 @@ def test_delivered_message_waits_in_queue_until_recv() -> None:
     assert got == [(0, "queued")]
 
 
+def test_delivery_into_empty_queue_raises_no_swallowed_error() -> None:
+    # A delivery into an endpoint with no waiting recv must not raise inside the loop callback. Such
+    # an error is routed to the loop's exception handler and swallowed, so the message-arrives
+    # assertion alone cannot see it — capture loop exceptions and assert none occurred.
+    errors: list[object] = []
+
+    async def scenario(world: World) -> None:
+        world._loop.set_exception_handler(lambda _loop, ctx: errors.append(ctx))
+        a = world.net.bind(0)
+        b = world.net.bind(1)
+        await a.send(1, "queued")
+        await asyncio.sleep(0.1)  # delivery fires into b's queue while no recv is waiting
+        await b.recv()
+
+    seedloop.replay(scenario, seed=1)
+    assert errors == []
+
+
+def test_zero_probability_endpoint_draws_no_fault_entropy() -> None:
+    # A loss=0 / duplicate=0 endpoint must consume nothing from the faults stream (the guards are
+    # `_loss > 0.0` / `_duplicate > 0.0`, not `>=`), so adding one cannot shift a lossy endpoint's
+    # drops. Compare the lossy drop pattern (normalised to its own message ids) with and without a
+    # quiet zero-probability endpoint sending first.
+    def lossy_drop_pattern(with_quiet: bool) -> tuple[int, ...]:
+        async def scenario(world: World) -> None:
+            if with_quiet:
+                quiet = world.net.bind(5, loss=0.0, duplicate=0.0)
+                await quiet.send(1, "q")  # zero-probability: must draw nothing from faults
+            lossy = world.net.bind(0, loss=0.5)
+            world.net.bind(1)
+            for i in range(10):
+                await lossy.send(1, i)
+            await asyncio.sleep(1)
+
+        tl = _run_one(scenario, 2)
+        rows = [cast("tuple[float, str, int, int, int]", e) for e in tl if isinstance(e, tuple)]
+        base = min(r[2] for r in rows if r[1] == "send" and r[3] == 0)  # first lossy message id
+        return tuple(r[2] - base for r in rows if r[1] == "drop" and r[3] == 0)
+
+    pattern = lossy_drop_pattern(False)
+    assert pattern  # loss=0.5 over 10 messages drops some (the comparison is non-vacuous)
+    assert pattern == lossy_drop_pattern(True)  # the quiet endpoint did not perturb the faults
+
+
 class _ForeverNode:
     def __init__(self) -> None:
         self.cancelled = False
