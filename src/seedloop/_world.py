@@ -113,4 +113,14 @@ class World:
                 task.cancel()
             if pending:
                 self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            # Every started task is done now (finished, failed, or just cancelled above). Retrieve
+            # the failures the run did not surface — a node that crashed while the scenario itself
+            # raised, or a second crashed node behind the one re-raised above. Their exceptions
+            # were never read, so at garbage collection asyncio would log "Task exception was never
+            # retrieved" into an otherwise clean run. Reading them changes no outcome (the run's
+            # failure is already in flight); cancelled tasks are skipped because exception() would
+            # raise their CancelledError.
+            for task in self._started:
+                if not task.cancelled():
+                    task.exception()
             self._loop.close()

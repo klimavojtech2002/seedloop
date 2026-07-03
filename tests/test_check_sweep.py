@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import gc
+import logging
+
 import pytest
 
 import seedloop
+from seedloop._run import _run_one
 from seedloop._world import World
 
 
@@ -88,8 +93,6 @@ class _QuietNode:
 
 def test_started_node_failure_is_reported() -> None:
     # A node started with world.start that raises must fail the run, not be silently orphaned.
-    import asyncio
-
     async def scenario(world: World) -> None:
         world.start(_CrashingNode())
         await asyncio.sleep(0)  # let the node run and crash
@@ -100,8 +103,6 @@ def test_started_node_failure_is_reported() -> None:
 
 
 def test_started_node_runs() -> None:
-    import asyncio
-
     node = _QuietNode()
 
     async def scenario(world: World) -> None:
@@ -110,3 +111,39 @@ def test_started_node_runs() -> None:
 
     seedloop.replay(scenario, seed=1)
     assert node.ran
+
+
+def _never_retrieved_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    # Task.__del__ reports an unread exception through the "asyncio" logger at garbage collection;
+    # collect first so any pending report lands before we look.
+    gc.collect()
+    return [r for r in caplog.records if "never retrieved" in r.getMessage()]
+
+
+def test_crashed_node_exception_is_retrieved_when_scenario_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A node crashes, then the scenario itself raises. The scenario's error is the run's failure
+    # (unchanged), and teardown must still read the node's exception — otherwise asyncio logs
+    # "Task exception was never retrieved" at garbage collection, noise in a clean gate run.
+    async def scenario(world: World) -> None:
+        world.start(_CrashingNode())
+        await asyncio.sleep(1)  # the node crashes during this sleep
+        raise KeyError("scenario failed on its own")
+
+    with caplog.at_level(logging.ERROR, logger="asyncio"), pytest.raises(KeyError):
+        _run_one(scenario, 0)
+    assert _never_retrieved_records(caplog) == []
+
+
+def test_second_crashed_node_exception_is_retrieved(caplog: pytest.LogCaptureFixture) -> None:
+    # Two nodes crash and the scenario returns cleanly: the first node's error surfaces as the
+    # failure (existing semantics), and the second's must be read at teardown, not left to warn
+    # at garbage collection.
+    async def scenario(world: World) -> None:
+        world.start(_CrashingNode(), _CrashingNode())
+        await asyncio.sleep(1)  # let both crash
+
+    with caplog.at_level(logging.ERROR, logger="asyncio"), pytest.raises(ValueError):
+        _run_one(scenario, 0)
+    assert _never_retrieved_records(caplog) == []
