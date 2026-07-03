@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **The README's leading example could not run.** It called the seed-scheduled fault API
+  (`world.run_for`, fault handles) that is still a design target, so pasting it against the
+  installed release died with `AttributeError`. The example now uses the implemented API —
+  scenario-driven `world.net.partition`/`heal` with virtual-time sleeps — and runs as written;
+  `run_for` stays an explicitly deferred item.
+- **Teardown left crashed-node exceptions unretrieved.** When the scenario itself raised, or when a
+  second started node failed behind the one surfaced, the extra task exceptions were never read and
+  asyncio logged "Task exception was never retrieved" at garbage collection. Teardown now retrieves
+  every started task's exception after cancellation; which exception a failing run raises is
+  unchanged.
+
 ## [0.3.1] — 2026-06-30
 
 Determinism and boundary-fidelity fixes found by an independent audit. All three were silent: a
