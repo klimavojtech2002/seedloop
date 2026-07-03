@@ -31,12 +31,12 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this (`World`, `check`, `replay`, the network `world.net`
-with loss/duplication/partitions, the `world.always` invariant API, and the `audit=True`
-non-determinism auditor are all implemented; the seed-scheduled `world.run_for` fault schedule is the
-next phase, specified in [docs/api.md](docs/api.md)):
+world it fully controls. A test looks like this — everything shown runs on the current release; the
+seed-*scheduled* fault plan (`world.run_for`) is the next phase, specified in
+[docs/api.md](docs/api.md):
 
 ```python
+import asyncio
 import seedloop
 
 async def scenario(world: seedloop.World) -> None:
@@ -47,12 +47,17 @@ async def scenario(world: seedloop.World) -> None:
     # State the invariant that must hold at every step, not just at the end.
     world.always(lambda: at_most_one_leader(nodes), name="at-most-one-leader")
 
-    # Inject chaos the seed decides the details of.
-    await world.run_for(seconds=10, faults=[world.partition(), world.slow_link()])
+    # Inject chaos: run a while, split the network, heal it, let the cluster recover.
+    # The seed decides every message's timing, so each seed is a different timeline.
+    await asyncio.sleep(2)
+    world.net.partition({0, 1}, {2, 3, 4})
+    await asyncio.sleep(2)
+    world.net.heal()
+    await asyncio.sleep(2)
 
-# Hunt across 10,000 seeded timelines; on failure, print the seed.
+# Hunt across 10,000 seeded timelines. A failure is re-raised tagged with its seed:
+#   seedloop: failing seed=4823 (replay with seedloop.replay)
 seedloop.check(scenario, seeds=10_000)
-# A failing run prints:  seed=4823  → replay with seedloop.replay(scenario, seed=4823)
 ```
 
 `seedloop.replay(scenario, seed=4823)` re-runs that exact timeline, deterministically, as many times
