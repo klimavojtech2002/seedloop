@@ -1,0 +1,10 @@
+# Equivalent mutants: each changes no observable behaviour, so no test can (or should) catch it.
+# The gate fails on any survivor NOT listed here — a new one means a real coverage gap, not a free
+# pass. Each line is `path:line mutation  # why it is equivalent`. Regenerate the bare list with
+# `python scripts/mutation_sweep.py --update`, then restore the reasons and review every change.
+src/seedloop/_loop.py:36 int 0->1  # timer tie-break counter start; only relative order matters
+src/seedloop/_loop.py:37 int 0->1  # task creation-index start; only relative order matters
+src/seedloop/_net.py:122 cmp LessThan->LessThanEqual  # random() == loss is measure-zero for floats
+src/seedloop/_net.py:126 cmp LessThan->LessThanEqual  # random() == duplicate is measure-zero
+src/seedloop/_run.py:27 bool True->False  # CheckResult frozen=False; immutability is never relied on
+src/seedloop/_world.py:111 int 1->0  # getattr default -1->0, unreachable: every task is stamped

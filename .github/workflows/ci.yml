@@ -36,3 +36,22 @@ jobs:
         run: pytest -q
       - name: Demo
         run: python -m seedloop.demos.raft
+
+  mutation:
+    # Prove the tests catch broken behaviour, not just that they are green: mutate the library and
+    # fail on any survivor not in the reviewed equivalent-mutant baseline. The survivor set is stable
+    # per platform, but OS-branching code (the hash-seed launcher) is exercised differently per OS, so
+    # the gate runs on the platform the baseline was generated and reviewed on (see ADR-0019).
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev,mutation]"
+      - name: Types (harness)
+        run: mypy scripts/mutation_sweep.py
+      - name: Mutation gate
+        run: python scripts/mutation_sweep.py
