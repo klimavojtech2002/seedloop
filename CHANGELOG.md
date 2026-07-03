@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- CI-tested support for CPython 3.14: the full gate matrix (lint, format, types, tests, demo) runs
+  on 3.12–3.14 across Linux, Windows, and macOS, and the package declares the 3.14 classifier.
+
 ### Fixed
 - **The README's leading example could not run.** It called the seed-scheduled fault API
   (`world.run_for`, fault handles) that is still a design target, so pasting it against the
