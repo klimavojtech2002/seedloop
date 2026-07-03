@@ -31,6 +31,8 @@ Changelog = "https://github.com/klimavojtech2002/seedloop/blob/main/CHANGELOG.md
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2"]
+# The mutation gate (scripts/mutation_sweep.py) rewrites the AST with libcst; CI-only, not runtime.
+mutation = ["libcst>=1.4"]
 
 [tool.setuptools.dynamic]
 version = { attr = "seedloop.__version__" }
@@ -50,7 +52,10 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
-exclude = ['(^|/)(\.venv|build|dist|\.eggs)/']
+# scripts/ is dev tooling (the mutation harness needs libcst, a CI-only extra), so `mypy .` on the
+# gates job does not require it; the mutation job type-checks the harness explicitly where libcst is
+# installed.
+exclude = ['(^|/)(\.venv|build|dist|\.eggs|scripts)/']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -459,6 +459,35 @@ drawn from `world.rng`, so the seed owns the race.
 
 ---
 
+## ADR-0019 — Mutation testing as a CI gate with a reviewed equivalent-mutant baseline
+
+**Status:** Accepted
+
+**Context.** A green suite proves the tests *run*, not that they would *catch a regression*. For a tool
+whose whole value is the determinism guarantee, "the tests pass" must mean "a broken guarantee fails a
+test" — measured, not asserted. Off-the-shelf runners were a poor fit: `mutmut` has no native Windows
+support, and a bare survivor count is noise without a way to separate real gaps from equivalent mutants.
+
+**Decision.** A small in-repo harness (`scripts/mutation_sweep.py`, libcst) applies one operator or
+constant swap at a time to the library, runs the suite, and reports survivors. Survivors are compared to
+a **reviewed baseline** (`scripts/mutation_baseline.txt`) of genuinely equivalent mutants — each line
+carries the reason it changes no observable behaviour. The `mutation` CI job fails on any deviation: a
+new survivor (a real gap — add a test) or a baselined one that now dies (tighten the baseline). The
+`demos/` package is excluded: it is a worked example validated end to end by its Raft split-brain sweep,
+not held to per-branch kills. The survivor set is stable per platform, but OS-branching code (the
+hash-seed launcher, which re-execs the interpreter) is exercised differently per OS, so the gate runs
+on the single platform the baseline was generated and reviewed on rather than baselining OS-specific
+survivors as if equivalent.
+
+**Consequences.**
+- "No falsely-green test" becomes an enforced, reviewable claim: the baseline is a short, justified list
+  (counter starts, measure-zero float comparisons, an unreachable default), and anything else fails CI.
+- Adding libcst as a CI-only extra (`.[mutation]`), never a runtime dependency; the wheel stays zero-dep.
+- Trade-off: the baseline is keyed by line number, so a source edit near a listed mutant needs a
+  conscious `--update` and re-review — intended friction, not accidental drift.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

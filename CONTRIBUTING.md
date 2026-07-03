@@ -36,6 +36,18 @@ A change is not done until every gate is green and its output has been read. New
 including the edge and adversarial cases; anything claiming determinism ships with a replay test that
 proves *same seed → same timeline* (see [docs/testing.md](docs/testing.md)).
 
+A separate CI job runs a mutation gate — it breaks the library one change at a time and fails if a test
+does not catch it, so "the tests pass" means "a regression would fail a test" (ADR-0019):
+
+```bash
+pip install -e ".[dev,mutation]"
+python scripts/mutation_sweep.py            # check survivors against the reviewed baseline
+python scripts/mutation_sweep.py --update   # regenerate the baseline, then restore the reasons
+```
+
+A new survivor is a real coverage gap: add a test, or record it in `scripts/mutation_baseline.txt` with
+the reason it is equivalent.
+
 ## Layout
 
 ```
