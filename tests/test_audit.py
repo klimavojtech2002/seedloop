@@ -212,3 +212,15 @@ def test_audit_mode_context_manager_is_exported() -> None:
         else:  # pragma: no cover
             raise AssertionError("audit_mode did not trip on time.monotonic")
     time.monotonic()  # restored outside the context
+
+
+def test_check_and_replay_do_not_audit_by_default() -> None:
+    # The auditor must be OFF unless explicitly requested: a scenario drawing secrets/os.urandom is
+    # seeded (deterministic), not tripped. Pins the public `audit=False` default on both `check` and
+    # `replay` — the internal `_run_one` default is covered elsewhere, the public API was not.
+    async def scenario(world: World) -> None:
+        world.record(("bytes", secrets.token_bytes(8)))
+
+    seedloop.replay(scenario, seed=1)  # default audit off -> must not raise EntropyLeakError
+    result = seedloop.check(scenario, seeds=3)  # default audit off -> no leak reported
+    assert result.failing_seed is None

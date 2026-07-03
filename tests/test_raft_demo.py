@@ -97,3 +97,18 @@ def test_election_timeouts_are_seeded() -> None:
 
     assert draws(7) == draws(7)
     assert draws(7) != draws(8)
+
+
+def test_election_advances_the_term_each_round() -> None:
+    # A candidate strictly increases its term on each election. The election-safety invariant is
+    # direction-agnostic, so on its own it leaves the term-increment direction unpinned.
+    async def scenario(world: World) -> None:
+        node = RaftNode(world, 0, [1, 2], buggy=False)
+        terms = [node.term]
+        await node._begin_election()
+        terms.append(node.term)
+        await node._begin_election()
+        terms.append(node.term)
+        assert terms == [0, 1, 2]  # strictly advancing from 0
+
+    seedloop.replay(scenario, seed=1)
