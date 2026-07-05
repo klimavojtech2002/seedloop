@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.2] — 2026-07-05
 
 ### Added
 - CI-tested support for CPython 3.14: the full gate matrix (lint, format, types, tests, demo) runs
