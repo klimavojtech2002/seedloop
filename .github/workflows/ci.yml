@@ -52,6 +52,6 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev,mutation]"
       - name: Types (harness)
-        run: mypy scripts/mutation_sweep.py
+        run: mypy scripts/mutation_sweep.py scripts/release_guard.py
       - name: Mutation gate
         run: python scripts/mutation_sweep.py

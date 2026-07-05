@@ -31,7 +31,7 @@ Issues = "https://github.com/klimavojtech2002/seedloop/issues"
 Changelog = "https://github.com/klimavojtech2002/seedloop/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2"]
+dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2", "packaging>=23"]
 # The mutation gate (scripts/mutation_sweep.py) rewrites the AST with libcst; CI-only, not runtime.
 mutation = ["libcst>=1.4"]
 
