@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Optional Hypothesis integration (`pip install seedloop[hypothesis]`): `seedloop.hypothesis` adds a
+  `seeds()` strategy and a `given_seed` decorator, so property-based exploration generates and shrinks
+  scenario inputs while each run stays deterministic and replayable, with a `replay(...)` reproduction
+  line on failure. The core keeps zero runtime dependencies (ADR-0020).
+
 ## [0.3.2] — 2026-07-05
 
 ### Added
