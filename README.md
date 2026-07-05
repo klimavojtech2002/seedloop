@@ -127,8 +127,10 @@ clock with autojump, seeded entropy, the `World` / `check` / `replay` API), the 
 fault injection (loss, duplication, partitions), the `world.always` invariant API, the non-determinism
 auditor (`audit=True`), and the worked Raft demo (which runs today) — so `asyncio` runs are reproducible
 and instant, a partition- or timing-dependent bug replays identically from its seed, and an uncontrolled
-entropy source fails loudly under audit. Deferred: the seed-scheduled `world.run_for` fault schedule and
-an optional Hypothesis integration (`seedloop[hypothesis]`). The full API target is in
+entropy source fails loudly under audit, and property-based exploration ships as an optional extra
+(`pip install seedloop[hypothesis]` → `seedloop.hypothesis`, Hypothesis-driven seed/input generation
+and shrinking over deterministic runs). Deferred: the seed-scheduled `world.run_for` fault schedule.
+The full API target is in
 [docs/api.md](docs/api.md) and the phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists

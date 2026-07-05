@@ -488,6 +488,32 @@ survivors as if equivalent.
 
 ---
 
+## ADR-0020 — The Hypothesis integration is a strategy plus a thin decorator, not baked into `check`
+
+**Status:** Accepted
+
+**Context.** ADR-0017 deferred the Hypothesis integration to its own opt-in extra; this slice settles
+its *shape*. A raw `st.integers()` for seeds is too little (a naked alias), and wiring Hypothesis into
+`check` is too much — it re-enters the ADR-0017 dependency problem and duplicates `check`'s own sweep.
+The design must also stay inside the determinism boundary of [scope.md](scope.md).
+
+**Decision.** Ship two things in `seedloop.hypothesis` (importable only with the extra; a clear
+`ImportError` naming it otherwise): `seeds()`, a strategy that encodes the seed domain, and
+`given_seed(**inputs)`, a thin decorator over `hypothesis.given(seed=seeds(), **inputs)` that attaches
+a `seedloop.replay(..., seed=S)` reproduction line to a failing example. Hypothesis owns generation,
+shrinking, and the example database (ADR-0004); seedloop owns the deterministic run.
+
+**Consequences.**
+- The core keeps zero runtime dependencies; only `pip install seedloop[hypothesis]` pulls Hypothesis.
+- The boundary is testable and tested: the seed and inputs are drawn *outside* the run, so a run stays
+  a pure function of its seed and replays identically even under the auditor (`audit=True`).
+- Shrinking is meaningful on *inputs*, not the seed — a smaller integer is not a simpler bug; the seed
+  is for exact reproduction, and the reproduction note carries the final shrunk seed.
+- Deliberately out: a Hypothesis stateful (`RuleBasedStateMachine`) wrapper — higher value but larger,
+  deferred until the plain strategy earns it.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the
