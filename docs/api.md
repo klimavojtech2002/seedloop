@@ -221,7 +221,9 @@ implemented; `EntropyLeakError` is raised by the non-determinism auditor under `
 ## Replay stability
 
 Within a **major version**, a recorded seed reproduces the same timeline and outcome — this is the
-contract `replay` rests on, and it is covered by replay-equivalence tests (see
+contract `replay` rests on. It is enforced two ways: replay-equivalence tests prove a seed is stable
+within a run, and a committed **golden timeline** (`scripts/pin_replay.py`, checked on the CI matrix)
+fails on any silent drift of one canonical scenario versus the pinned commit (see
 [testing.md](testing.md)). **Across major versions it is not guaranteed:** a change to scheduling, the
 fault model, or entropy derivation can move what a seed produces, and the changelog calls out any such
 change. The hierarchical seed-splitting of ADR-0009 is what keeps a seed stable under ordinary
