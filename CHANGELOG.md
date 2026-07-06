@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Replay-stability pin: a committed golden timeline (`scripts/pin_replay.py` →
+  `tests/data/replay_golden.txt`) records one canonical scenario's exact events at a fixed seed and is
+  checked byte-for-byte on the CI matrix, so a timeline-affecting change (ADR-0011) fails CI instead of
+  silently invalidating recorded seeds.
 - Optional Hypothesis integration (`pip install seedloop[hypothesis]`): `seedloop.hypothesis` adds a
   `seeds()` strategy and a `given_seed` decorator, so property-based exploration generates and shrinks
   scenario inputs while each run stays deterministic and replayable, with a `replay(...)` reproduction

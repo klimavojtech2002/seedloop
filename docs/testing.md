@@ -44,6 +44,10 @@ change.
 - **Replay equivalence** — the harness above, run per phase on representative scenarios. This is the gate
   that proves determinism; a slice claiming a new entropy source is controlled adds a replay test that
   exercises it.
+- **Replay-stability pin** — a committed golden timeline (`scripts/pin_replay.py` →
+  `tests/data/replay_golden.txt`) records one canonical scenario's exact events at a fixed seed, checked
+  byte-for-byte on the CI matrix. Where replay-equivalence proves stability *within a run*, the golden
+  proves it *across commits*: a timeline-affecting change (ADR-0011) fails CI instead of landing silently.
 - **Property-based / metamorphic** (Hypothesis, ADR-0004) — generate seeds and scenario inputs, assert
   invariants hold and that `replay` of any generated seed reproduces its outcome. Metamorphic relation:
   reordering independent `send`s in source must not change a timeline the seed already determines.
