@@ -33,9 +33,9 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this — everything shown runs on the current release; the
-seed-*scheduled* fault plan (`world.run_for`) is the next phase, specified in
-[docs/api.md](docs/api.md):
+world it fully controls. A test looks like this — everything shown runs on the current release; seed-
+*scheduled* fault handles (`world.partition()`/`slow_link()`/`crash()` passed to `world.run_for`) are
+the next phase, specified in [docs/api.md](docs/api.md):
 
 ```python
 import asyncio
@@ -131,8 +131,9 @@ auditor (`audit=True`), and the worked Raft demo (which runs today) — so `asyn
 and instant, a partition- or timing-dependent bug replays identically from its seed, and an uncontrolled
 entropy source fails loudly under audit, and property-based exploration ships as an optional extra
 (`pip install seedloop[hypothesis]` → `seedloop.hypothesis`, Hypothesis-driven seed/input generation
-and shrinking over deterministic runs). Deferred: the seed-scheduled `world.run_for` fault schedule.
-The full API target is in
+and shrinking over deterministic runs), and the time-advancing `world.run_for`/`run_until` primitives.
+Deferred: the seed-scheduled fault-handle constructors (`partition()`/`slow_link()`/`crash()`) that
+plug into `run_for`. The full API target is in
 [docs/api.md](docs/api.md) and the phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists

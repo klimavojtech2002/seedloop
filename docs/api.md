@@ -5,8 +5,11 @@ The surface a user writes against. This is the design target for Phases 1–3. *
 `CheckResult`, `ensure_hash_seed`, and the error types. **Phase 2:** the network port
 (`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
 partition/heal, and the reliable channel. **Phase 3:** the invariant API (`world.always`,
-`InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`). **Still design:**
-seed-scheduled faults (`run_for`/`partition()`/`slow_link()`/`crash()` handles).
+`InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`). **Also
+implemented:** the time-advancing primitives `world.run_for(seconds=...)` and
+`world.run_until(predicate, deadline=...)`. **Still design:** seed-scheduled fault handles
+(`partition()`/`slow_link()`/`crash()`) consumed by `run_for(faults=[...])` — `run_for` itself only
+accepts an empty `faults` sequence until they land.
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
@@ -117,11 +120,13 @@ class World:
         self, predicate: Callable[[], bool], *, name: str
     ) -> None: ...  # a continuous safety property
 
-    # --- design target ---
+    # --- implemented ---
     async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None: ...
     async def run_until(
         self, predicate: Callable[[], bool], *, deadline: float | None = None
     ) -> None: ...
+
+    # --- design target ---
     def partition(self, *groups: Collection[Address]) -> Fault: ...
     def slow_link(
         self, a: Address | None = None, b: Address | None = None, *, factor: float | None = None
@@ -138,11 +143,18 @@ class World:
   `predicate()` is false raises `InvariantError(name)` — which is what `check` catches and ties to the
   seed. Invariants are how a *continuous* property ("never two leaders") is enforced, versus an `assert`
   at the end that only checks the final state.
-- **`run_for`** advances virtual time by `seconds`, applying `faults`. A fault left unparameterized
-  (`world.partition()` with no groups, `slow_link()` with no endpoints) lets the **seed** decide its
-  details — which nodes, when, how long — so chaos is reproducible, not random.
-- **`run_until`** advances until `predicate()` holds or the optional virtual `deadline` passes (a
-  deadline miss raises `TimeoutError`); useful for "run until the cluster converges".
+- **`run_for`** advances virtual time by `seconds`. `faults` is part of the committed signature but not
+  usable yet — a non-empty sequence raises `SeedloopError` (ADR-0016/ADR-0021); once the fault-handle
+  constructors land, a fault left unparameterized (`world.partition()` with no groups, `slow_link()`
+  with no endpoints) will let the **seed** decide its details — which nodes, when, how long — so chaos
+  is reproducible, not random.
+- **`run_until`** advances until `predicate()` holds, checked after every scheduling step (the same
+  cadence as `always()`). `deadline`, if given, is a **virtual duration from the call** (matching
+  `run_for`'s `seconds`): if the predicate has not become true within it, `run_until` raises
+  `TimeoutError`; if both become true in the same step, the predicate wins (ADR-0021). With no deadline
+  and nothing left to make progress, the existing `DeadlockError` guard applies — there is no separate
+  hang detector. Only one `run_until` may be active at a time; a nested or concurrent call raises
+  `SeedloopError`. Useful for "run until the cluster converges".
 
 ## The network port
 

@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Time-advancing scenario primitives: `world.run_for(seconds=...)` advances virtual time by a fixed
+  duration, and `world.run_until(predicate, deadline=...)` advances until a condition holds, raising
+  `TimeoutError` if an optional virtual deadline elapses first (the predicate wins a same-step tie with
+  the deadline; see ADR-0021). Seed-scheduled fault handles (`partition()`/`slow_link()`/`crash()`) that
+  plug into `run_for` remain deferred (ADR-0016) — a non-empty `faults` argument is rejected rather than
+  silently ignored.
 - Replay-stability pin: a committed golden timeline (`scripts/pin_replay.py` →
   `tests/data/replay_golden.txt`) records one canonical scenario's exact events at a fixed seed and is
   checked byte-for-byte on the CI matrix, so a timeline-affecting change (ADR-0011) fails CI instead of

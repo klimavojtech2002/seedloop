@@ -12,14 +12,15 @@ and the simulated network's delivery timing — not callback order.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+import math
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol, runtime_checkable
 
 from seedloop._entropy import substream
 from seedloop._loop import DeterministicLoop
 from seedloop._net import Transport
 from seedloop._trace import Timeline
-from seedloop.errors import InvariantError
+from seedloop.errors import InvariantError, SeedloopError
 
 
 @runtime_checkable
@@ -39,6 +40,8 @@ class World:
         self._timeline = Timeline()
         self._started: list[asyncio.Task[None]] = []
         self._invariants: list[tuple[str, Callable[[], bool]]] = []
+        self._invariants_hook_installed = False
+        self._run_until_active = False
         self.net = Transport(
             self._loop, substream(seed, "net"), substream(seed, "faults"), self._timeline
         )
@@ -65,12 +68,104 @@ class World:
         initial value on the first check.
         """
         self._invariants.append((name, predicate))
-        self._loop._sl_after_step = self._check_invariants  # check from the next step on
+        if not self._invariants_hook_installed:
+            # Installed once no matter how many predicates are registered — _check_invariants loops
+            # over all of them itself, so the hook list only ever gets one entry for invariants.
+            self._loop._sl_after_step_hooks.append(self._check_invariants)
+            self._invariants_hook_installed = True
 
     def _check_invariants(self) -> None:
+        # A hard hook: raises directly, so it always wins the same-step priority in
+        # DeterministicLoop._run_once, and its exception carries the invariant's own name/time
+        # without going through the generic exception-repr note path (ADR-0021).
         for name, predicate in self._invariants:
             if not predicate():
                 raise InvariantError(name, self._loop.time())
+
+    async def run_for(self, *, seconds: float, faults: Sequence[object] = ()) -> None:
+        """Advance virtual time by ``seconds``.
+
+        ``faults`` is part of the committed public signature (``docs/api.md``) but seed-scheduled
+        fault injection is not implemented yet (ADR-0016) — passing any is rejected outright rather
+        than silently ignored, since a silent no-op would be a correctness trap for a caller who
+        assumes the documented signature already works. Use ``world.net.partition``/``heal`` for
+        scenario-driven faults today.
+        """
+        if faults:
+            raise SeedloopError(
+                "run_for(faults=...) is not implemented yet (seed-scheduled faults are a later "
+                "slice, ADR-0016); use world.net.partition/heal for scenario-driven faults today"
+            )
+        if not math.isfinite(seconds) or seconds < 0:
+            raise SeedloopError(f"seconds must be a finite number >= 0, got {seconds!r}")
+        await asyncio.sleep(seconds)
+
+    async def run_until(
+        self, predicate: Callable[[], bool], *, deadline: float | None = None
+    ) -> None:
+        """Advance virtual time until ``predicate()`` holds.
+
+        ``deadline``, if given, is a virtual duration from this call (matching ``run_for``'s
+        ``seconds``, not an absolute clock reading): if ``predicate`` has not become true within it,
+        raise ``TimeoutError``. If both become true in the same step, ``predicate`` wins — decided
+        here rather than left to asyncio's internal ordering (ADR-0021). Only one ``run_until`` may
+        be active at a time; a nested or concurrent call raises ``SeedloopError``. If ``predicate``
+        itself raises, that exception propagates; if an ``always()`` invariant also fails in the
+        same step, whichever was registered first is what the run raises, with the other attached to
+        it as a note rather than discarded (ADR-0021).
+        """
+        if self._run_until_active:
+            raise SeedloopError("run_until does not support concurrent or nested calls")
+        if deadline is not None and not math.isfinite(deadline):
+            raise SeedloopError(f"deadline must be a finite number or None, got {deadline!r}")
+        self._run_until_active = True
+        done: asyncio.Future[None] = self._loop.create_future()
+        deadline_at = self._loop.time() + deadline if deadline is not None else None
+
+        def check() -> Exception | None:
+            if done.done():
+                return None
+            try:
+                holds = predicate()
+            except Exception as exc:
+                # Route the exception through `done` so `await done` delivers it inside run_until's
+                # own frame (catchable by the scenario's own try/except around this call), AND
+                # return it so _run_once's hook loop can give it priority if another hook (e.g. an
+                # always() invariant) also fails this same step — a deferred-delivery exception can
+                # never win a same-step race on its own, since it never raises synchronously.
+                done.set_exception(exc)
+                return exc
+            if holds:
+                done.set_result(None)
+            elif deadline_at is not None and self._loop.time() >= deadline_at:
+                # An elapsed deadline is an expected, often-handled outcome (that's the point of
+                # `deadline`), not a bug — unlike a raising predicate, it does not compete for
+                # same-step priority against another hook's failure.
+                done.set_exception(
+                    TimeoutError(f"run_until: predicate did not hold within deadline={deadline}")
+                )
+            return None
+
+        self._loop._sl_after_step_hooks.append(check)
+        # A deadline needs a real timer so the loop has something to autojump to even if nothing
+        # else is scheduled — otherwise a scenario with no other pending work would hit the existing
+        # DeadlockError guard (which runs before after-step hooks) before the deadline could fire.
+        timer = self._loop.call_at(deadline_at, lambda: None) if deadline_at is not None else None
+        try:
+            check()  # the predicate may already hold; do not wait a full step for that case
+            await done
+        finally:
+            # The hook may already be gone: a DeadlockError (or another hook's exception) raised
+            # from _run_once while this call was still pending aborts the run through World._drive,
+            # whose teardown clears the whole hook list before this finally ever runs (delivered via
+            # the task-cancellation that follows). Removal here is best-effort cleanup, not a
+            # correctness requirement — asserting membership first avoids a spurious ValueError that
+            # would otherwise mask whatever exception actually ended the run.
+            if check in self._loop._sl_after_step_hooks:
+                self._loop._sl_after_step_hooks.remove(check)
+            if timer is not None:
+                timer.cancel()
+            self._run_until_active = False
 
     def start(self, *nodes: Node) -> None:
         """Schedule each node's ``run()`` coroutine as a task on the loop.
@@ -100,7 +195,7 @@ class World:
             # Invariants describe the logical run, not cancellation cleanup — stop checking them
             # before teardown, so a node mutating observed state in its cancel handler cannot raise
             # a spurious InvariantError (and cannot mask the real failure raised above).
-            self._loop._sl_after_step = None
+            self._loop._sl_after_step_hooks.clear()
             # Cancel every task still pending — started nodes and any the scenario spawned — and let
             # the cancellations process, so the loop closes without "Task was destroyed but it is
             # pending" warnings (a node loop that never returns, or a recv stuck under a fault).

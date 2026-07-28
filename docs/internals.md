@@ -6,9 +6,10 @@ non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [g
 
 The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
 entropy primitives, their assembly into a `World` with `check`/`replay`, and the network with its faults
-(loss, duplication, partition, reliable channel), the invariant API (`world.always`), and the
-non-determinism auditor (`audit=True`) — is implemented and tested; only the seed-*scheduled* fault API
-(`run_for`) is still design. The load-bearing CPython facts below were checked against the
+(loss, duplication, partition, reliable channel), the invariant API (`world.always`), the
+non-determinism auditor (`audit=True`), and the time-advancing primitives (`world.run_for`/`run_until`)
+— is implemented and tested; only the seed-*scheduled* fault-handle constructors consumed by
+`run_for(faults=[...])` are still design. The load-bearing CPython facts below were checked against the
 target interpreter (CPython 3.13); where a claim depends on a version, it says so.
 
 ## The loop and what it implements
