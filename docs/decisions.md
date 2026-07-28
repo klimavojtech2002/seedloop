@@ -514,6 +514,82 @@ shrinking, and the example database (ADR-0004); seedloop owns the deterministic 
 
 ---
 
+## ADR-0021 — `run_until`'s deadline tie-break is owned code, not delegated to `asyncio.wait_for`
+
+**Status:** Accepted
+
+**Context.** `world.run_for(seconds=...)` and `world.run_until(predicate, deadline=...)` (ADR-0016's
+deferred time-advance primitives, minus seed-scheduled fault handles, which stay deferred) needed a
+mechanism for `run_until`'s optional `deadline`. `asyncio.wait_for`/`asyncio.timeout` would have worked
+for the common case — both compute their deadline via `loop.time()`/`loop.call_at()`, so they already
+respect this loop's virtual clock — but the *tie-break* when a predicate becomes true in the same step
+a deadline elapses would then depend on undocumented internal ordering inside CPython's
+`asyncio.timeouts.Timeout`, which is not part of its public contract and is exercised across three
+minor versions on the CI matrix (3.12–3.14). This project already refuses to depend on unowned ordering
+elsewhere (ADR-0012's faithful FIFO, ADR-0013's minimal `_run_once` override); the same standard applies
+here. Registering an after-step hook also required generalizing the loop's single-slot hook
+(`_sl_after_step`, installed exclusively by `world.always()`) into a list, since an active invariant
+check and an active `run_until` predicate check both need to run every step without one replacing the
+other.
+
+**Decision.**
+- `_loop.py`'s `_sl_after_step: Callable[[], None] | None` becomes `_sl_after_step_hooks: list[Callable[[], Exception | None]]`,
+  run in append order after every step's ready batch. Empty-list/one-item-list behaviour matches the old
+  `None`/single-callable cases, so `world.always()` (which installs its check once, guarded by a flag,
+  rather than re-assigning a slot) is unaffected when it is the only hook in play.
+- Hooks report failure one of two ways, and the difference is deliberate:
+  - **Hard** — raise directly. `_check_invariants` does this unchanged: an invariant violation always
+    ends the run at the step it breaks, and always wins if another hook also fails that step.
+  - **Soft** — return an exception instead of raising. `run_until`'s predicate-check hook does this: a
+    predicate that raises is delivered through `run_until`'s own `Future` (so a scenario's own
+    `try/except` around `await world.run_until(...)` can catch it), which necessarily takes one more
+    scheduling step than a synchronous raise — so it can never win a same-step race against a hard
+    hook on its own. `_run_once` calls every hook in the batch even after a hard one raises (catching
+    each via `try/except`, not stopping the loop), and if both a hard and a soft failure land in the
+    same step, the soft one is attached to the hard one as a note (`Exception.add_note`, the same
+    idiom `_run.py`'s `check()` already uses) rather than silently discarded. A soft failure with no
+    competing hard one that step is not raised by `_run_once` at all — it has already been delivered
+    through its own `Future`.
+- `run_until` owns its own predicate-vs-deadline tie-break: a closure appended to the hook list checks
+  `predicate()` first and the deadline second, every step. If both are true in the same step, the
+  predicate wins. The deadline is not delegated to `asyncio.wait_for`; the future is resolved directly,
+  from inside code this project owns and tests, matching this same step's evaluation order
+  deterministically on every CPython version the matrix covers.
+- `deadline` is a **virtual duration from the call** — symmetric with `run_for`'s `seconds` — not an
+  absolute clock reading; `docs/api.md`'s prose did not fully settle this, so it is decided here.
+- A deadline still schedules a real `TimerHandle` (a no-op callback) so the loop has something to
+  autojump to even when nothing else is scheduled — otherwise the existing `DeadlockError` guard (which
+  runs before after-step hooks) would fire before the deadline could ever be observed.
+- `run_for`'s `seconds` and `run_until`'s `deadline` both reject non-finite values (`NaN`, `±inf`) with
+  `SeedloopError`, checked before any state is touched. `NaN` specifically breaks `heapq`'s total
+  ordering (it compares `False` against everything), so an unvalidated `NaN` deadline silently stops the
+  virtual clock's autojump from ever advancing — an unbounded hang, not a clean failure, in a framework
+  whose whole premise is bounded, reproducible runs.
+- `run_for`'s `faults` parameter is accepted (the signature `docs/api.md` already commits to) but a
+  non-empty sequence raises `SeedloopError` rather than being silently ignored — seed-scheduled fault
+  handles remain ADR-0016's deferral, now solely attributed to a later slice (0470).
+
+**Consequences.**
+- The tie-break is a single `if`/`elif` a reviewer reads in one glance, rather than three CPython minor
+  versions being trusted to agree on internal cancellation ordering.
+- `world.always()` and an active `run_until` compose: an invariant violated while a `run_until` call is
+  pending still raises `InvariantError`, proven by a test that would instead see a stale `TimeoutError`
+  if the hook-list generalization regressed to the old single-slot behaviour. If the invariant and the
+  predicate both fail in the same step, the invariant is still what the run reports (a hard failure
+  always wins), but the predicate's exception is now attached as a note rather than vanishing —
+  regardless of which was registered first, since a soft hook never becomes the primary failure on its
+  own.
+- Nested or concurrent `run_until` calls are rejected outright (`SeedloopError`) — one scenario coroutine
+  drives one `World`, so exactly one active call is the supported shape; a real need for more is a new
+  ADR, not a silent allowance.
+- `run_for(faults=(...))` will need its guard loosened, not removed, when 0470 lands — no caller could
+  have relied on faults being silently accepted, because it never worked.
+- A predicate raising a `NaN`/`±inf`-adjacent bug is unrelated to this validation — it is `deadline`
+  and `seconds` themselves (the primitives' own inputs) that are checked, not arbitrary values a
+  predicate might compute internally.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

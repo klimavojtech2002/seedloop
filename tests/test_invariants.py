@@ -106,6 +106,20 @@ def test_first_failing_invariant_in_registration_order_is_reported() -> None:
     assert result.error.name == "first"
 
 
+def test_always_called_twice_installs_the_hook_once() -> None:
+    # always() must install its after-step hook once no matter how many predicates are registered
+    # (ADR-0021) — a regression would re-append _check_invariants on every call, running it
+    # redundantly every step forever. The outcome (an invariant that fires still fires) would look
+    # identical, so this needs a direct check of the hook list, not just a pass/fail scenario.
+    async def scenario(world: World) -> None:
+        world.always(lambda: True, name="first")
+        world.always(lambda: True, name="second")
+        assert world._loop._sl_after_step_hooks.count(world._check_invariants) == 1
+        await asyncio.sleep(1)
+
+    seedloop.check(scenario, seeds=1)
+
+
 def test_invariant_is_exported() -> None:
     assert "InvariantError" in seedloop.__all__
     assert issubclass(seedloop.InvariantError, seedloop.SeedloopError)

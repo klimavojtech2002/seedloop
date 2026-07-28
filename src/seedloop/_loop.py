@@ -35,9 +35,16 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         self._sl_timers: list[tuple[float, int, asyncio.TimerHandle]] = []
         self._sl_timer_seq = 0
         self._sl_task_seq = 0  # monotonic creation index stamped on every task (see create_task)
-        # Optional hook the World uses to check invariants after each step; None by default, so a
-        # run without invariants is unchanged. It may raise to fail the run.
-        self._sl_after_step: Callable[[], None] | None = None
+        # Hooks the World runs after each step: invariant checks (World.always) and an active
+        # run_until's predicate check. Empty by default, so a run using neither is unchanged. A hook
+        # reports a *hard* failure by raising directly (e.g. an invariant violation — always wins
+        # and always ends the run here); it reports a *soft* one by returning an exception (e.g.
+        # run_until's predicate — already delivered through its own Future, so it must not force a
+        # synchronous raise on its own, or it could never be caught by a scenario's own try/except
+        # around `await world.run_until(...)`). Every hook still runs even if an earlier one raises,
+        # so a soft failure is never silently erased by a hard one in the same step — it is attached
+        # to whatever hard failure does end the run as a note instead (ADR-0021).
+        self._sl_after_step_hooks: list[Callable[[], Exception | None]] = []
 
     def time(self) -> float:
         return self._sl_time
@@ -91,8 +98,25 @@ class DeterministicLoop(asyncio.BaseEventLoop):
             handle = ready.popleft()
             if not handle.cancelled():
                 handle._run()
-        if self._sl_after_step is not None:
-            self._sl_after_step()  # check invariants; may raise to fail the run
+        # Every hook runs even if an earlier one raises (hard failure), so a soft one after it still
+        # gets a chance to report — a hard failure is what ends the run here; a soft one is a note.
+        first: Exception | None = None
+        notes: list[Exception] = []
+        for hook in self._sl_after_step_hooks:
+            try:
+                soft = hook()
+            except Exception as exc:
+                if first is None:
+                    first = exc
+                else:
+                    notes.append(exc)
+                continue
+            if soft is not None:
+                notes.append(soft)
+        if first is not None:
+            for note in notes:
+                first.add_note(f"another after-step check also failed this step: {note!r}")
+            raise first
 
     def _fire_due_timers(self) -> None:
         # Promote every timer whose deadline has arrived (<= the clock) to the ready queue.
