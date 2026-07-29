@@ -111,8 +111,9 @@ class World:
         here rather than left to asyncio's internal ordering (ADR-0021). Only one ``run_until`` may
         be active at a time; a nested or concurrent call raises ``SeedloopError``. If ``predicate``
         itself raises, that exception propagates; if an ``always()`` invariant also fails in the
-        same step, whichever was registered first is what the run raises, with the other attached to
-        it as a note rather than discarded (ADR-0021).
+        same step, the invariant is what the run raises regardless of registration order (a hard
+        failure always wins), with the predicate's exception attached to it as a note rather than
+        discarded (ADR-0021).
         """
         if self._run_until_active:
             raise SeedloopError("run_until does not support concurrent or nested calls")
