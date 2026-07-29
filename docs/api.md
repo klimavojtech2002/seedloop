@@ -19,6 +19,7 @@ name where a rename would be costly.
 ```python
 import seedloop
 
+
 async def scenario(world: seedloop.World) -> None:
     # Build your nodes; each binds an address on the simulated network.
     nodes = [RaftNode(addr, world.net) for addr in range(5)]
@@ -29,6 +30,7 @@ async def scenario(world: seedloop.World) -> None:
 
     # Advance virtual time under faults the seed parameterizes.
     await world.run_for(seconds=10, faults=[world.partition(), world.slow_link()])
+
 
 # Hunt across many seeded timelines; on failure, report the seed.
 result = seedloop.check(scenario, seeds=10_000)
@@ -46,18 +48,22 @@ seedloop.replay(scenario, seed=4823)
 ```python
 Scenario: TypeAlias = Callable[[World], Awaitable[None]]
 
+
 def check(
     scenario: Scenario,
     *,
     seeds: int | Iterable[int] = 1000,
     on_failure: Literal["raise", "return"] = "raise",
-    audit: bool = False,        # run each seed under the non-determinism auditor (ADR-0008)
+    audit: bool = False,  # run each seed under the non-determinism auditor (ADR-0008)
 ) -> CheckResult: ...
+
 
 def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None: ...
 
+
 @contextmanager
-def audit_mode() -> Iterator[None]: ...   # trip on uncontrolled entropy for the duration
+def audit_mode() -> Iterator[None]: ...  # trip on uncontrolled entropy for the duration
+
 
 def ensure_hash_seed(root_seed: int) -> None: ...
 ```
@@ -77,9 +83,9 @@ def ensure_hash_seed(root_seed: int) -> None: ...
 ```python
 @dataclass(frozen=True)
 class CheckResult:
-    checked: int                 # how many seeds ran
-    failing_seed: int | None     # first failing seed, or None if all passed
-    error: Exception | None      # the exception that seed raised, or None
+    checked: int  # how many seeds ran
+    failing_seed: int | None  # first failing seed, or None if all passed
+    error: Exception | None  # the exception that seed raised, or None
 ```
 
 ## `World`
@@ -89,26 +95,37 @@ build it and pass it to the scenario.
 
 ```python
 class World:
-    seed: int                    # this run's identity
-    rng: random.Random           # seeded RNG for user code — use this, never the global random
+    seed: int  # this run's identity
+    rng: random.Random  # seeded RNG for user code — use this, never the global random
 
     # --- implemented (Phase 1) ---
-    def now(self) -> float: ...                        # current virtual time, seconds
-    def start(self, *nodes: Node) -> None: ...         # schedule each node's run(); a node that raises fails the run
-    def record(self, event: object) -> None: ...       # append (now, event) to the timeline (the determinism artifact)
-    timeline: tuple[object, ...]                        # read-only snapshot of recorded (virtual_time, event) pairs
+    def now(self) -> float: ...  # current virtual time, seconds
+    def start(
+        self, *nodes: Node
+    ) -> None: ...  # schedule each node's run(); a node that raises fails the run
+    def record(
+        self, event: object
+    ) -> None: ...  # append (now, event) to the timeline (the determinism artifact)
+
+    timeline: tuple[object, ...]  # read-only snapshot of recorded (virtual_time, event) pairs
 
     # --- implemented (Phase 2: datagram + faults) ---
-    net: Transport               # the simulated network (see below): delivery, loss/duplicate, partition, reliable
+    net: Transport  # the simulated network (see below): delivery, loss/duplicate, partition, reliable
 
     # --- implemented (Phase 3) ---
-    def always(self, predicate: Callable[[], bool], *, name: str) -> None: ...  # a continuous safety property
+    def always(
+        self, predicate: Callable[[], bool], *, name: str
+    ) -> None: ...  # a continuous safety property
 
     # --- design target ---
     async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None: ...
-    async def run_until(self, predicate: Callable[[], bool], *, deadline: float | None = None) -> None: ...
+    async def run_until(
+        self, predicate: Callable[[], bool], *, deadline: float | None = None
+    ) -> None: ...
     def partition(self, *groups: Collection[Address]) -> Fault: ...
-    def slow_link(self, a: Address | None = None, b: Address | None = None, *, factor: float | None = None) -> Fault: ...
+    def slow_link(
+        self, a: Address | None = None, b: Address | None = None, *, factor: float | None = None
+    ) -> Fault: ...
     def crash(self, node: Address | None = None, *, at: float | None = None) -> Fault: ...
 ```
 
@@ -136,19 +153,23 @@ seedloop's concrete deterministic network, whose `bind` hands out endpoints. One
 receiver: concurrent `recv` on the same endpoint is not supported.
 
 ```python
-Address: TypeAlias = int        # a node's address on the simulated network
-Message: TypeAlias = object     # an opaque payload; seedloop never inspects it
+Address: TypeAlias = int  # a node's address on the simulated network
+Message: TypeAlias = object  # an opaque payload; seedloop never inspects it
 
-class Endpoint(Protocol):       # the sans-I/O port a node holds
+
+class Endpoint(Protocol):  # the sans-I/O port a node holds
     address: Address
-    async def send(self, dst: Address, msg: Message) -> None: ...
-    async def recv(self) -> tuple[Address, Message]: ...   # (src, msg), blocks until one arrives
 
-class Transport:                # the concrete simulated network (world.net)
-    def bind(self, address: Address, *, reliable: bool = False,
-             loss: float = 0.0, duplicate: float = 0.0) -> Endpoint: ...
-    def partition(self, *groups: set[Address]) -> None: ...   # split the network
-    def heal(self) -> None: ...                                # restore full connectivity
+    async def send(self, dst: Address, msg: Message) -> None: ...
+    async def recv(self) -> tuple[Address, Message]: ...  # (src, msg), blocks until one arrives
+
+
+class Transport:  # the concrete simulated network (world.net)
+    def bind(
+        self, address: Address, *, reliable: bool = False, loss: float = 0.0, duplicate: float = 0.0
+    ) -> Endpoint: ...
+    def partition(self, *groups: set[Address]) -> None: ...  # split the network
+    def heal(self) -> None: ...  # restore full connectivity
 ```
 
 - **`bind`** gives a node its endpoint. `reliable=False` (default) is an unreliable datagram channel
@@ -182,7 +203,7 @@ by `run_for`. The constructors are seed-parameterized: pin the arguments to forc
 leave them out to let the seed choose within the run.
 
 ```python
-class Fault(Protocol): ...      # no user-facing members; pass to run_for(faults=[...])
+class Fault(Protocol): ...  # no user-facing members; pass to run_for(faults=[...])
 ```
 
 - **`partition(*groups)`** splits the network so messages cross group boundaries only after the
@@ -197,11 +218,21 @@ class Fault(Protocol): ...      # no user-facing members; pass to run_for(faults
 ## Errors
 
 ```python
-class SeedloopError(Exception): ...           # base for everything seedloop raises
-class DeadlockError(SeedloopError): ...         # the run is quiescent with tasks still awaiting
-class InvariantError(SeedloopError): ...        # an always(...) invariant was violated
-class BoundaryError(SeedloopError): ...         # out-of-boundary use inside a run
-class EntropyLeakError(BoundaryError): ...      # uncontrolled entropy touched under audit (carries .source)
+class SeedloopError(Exception): ...  # base for everything seedloop raises
+
+
+class DeadlockError(SeedloopError): ...  # the run is quiescent with tasks still awaiting
+
+
+class InvariantError(SeedloopError): ...  # an always(...) invariant was violated
+
+
+class BoundaryError(SeedloopError): ...  # out-of-boundary use inside a run
+
+
+class EntropyLeakError(
+    BoundaryError
+): ...  # uncontrolled entropy touched under audit (carries .source)
 ```
 
 `SeedloopError`, `DeadlockError`, `InvariantError`, `BoundaryError`, and `EntropyLeakError` are all

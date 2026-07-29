@@ -34,7 +34,7 @@ Changelog = "https://github.com/klimavojtech2002/seedloop/blob/main/CHANGELOG.md
 # The property-based explorer (ADR-0004/0017): an opt-in extra so the core stays zero-dependency.
 hypothesis = ["hypothesis>=6"]
 # dev pulls the hypothesis extra so the gates job runs its tests — one source of truth for the pin.
-dev = ["ruff>=0.6", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2", "packaging>=23", "seedloop[hypothesis]"]
+dev = ["ruff==0.16.0", "mypy>=1.10", "pytest>=8", "pytest-timeout>=2", "packaging>=23", "seedloop[hypothesis]"]
 # The mutation gate (scripts/mutation_sweep.py) rewrites the AST with libcst; CI-only, not runtime.
 mutation = ["libcst>=1.4"]
 

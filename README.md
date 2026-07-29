@@ -41,6 +41,7 @@ seed-*scheduled* fault plan (`world.run_for`) is the next phase, specified in
 import asyncio
 import seedloop
 
+
 async def scenario(world: seedloop.World) -> None:
     # Spin up your nodes; they send messages through the simulated network.
     nodes = [RaftNode(addr, world.net) for addr in range(5)]
@@ -56,6 +57,7 @@ async def scenario(world: seedloop.World) -> None:
     await asyncio.sleep(2)
     world.net.heal()
     await asyncio.sleep(2)
+
 
 # Hunt across 10,000 seeded timelines. A failure is re-raised tagged with its seed:
 #   seedloop: failing seed=4823 (replay with seedloop.replay)
