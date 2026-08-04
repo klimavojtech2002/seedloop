@@ -8,6 +8,7 @@ API, and the non-determinism auditor are in place; a worked Raft demo ships in `
 
 from seedloop._audit import audit_mode
 from seedloop._entropy import ensure_hash_seed
+from seedloop._faults import CrashFault, Fault, PartitionFault, SlowLinkFault
 from seedloop._net import Address, Endpoint, Message, Transport
 from seedloop._run import CheckResult, Scenario, check, replay
 from seedloop._world import Node, World
@@ -23,14 +24,18 @@ __all__ = [
     "Address",
     "BoundaryError",
     "CheckResult",
+    "CrashFault",
     "DeadlockError",
     "Endpoint",
     "EntropyLeakError",
+    "Fault",
     "InvariantError",
     "Message",
     "Node",
+    "PartitionFault",
     "Scenario",
     "SeedloopError",
+    "SlowLinkFault",
     "Transport",
     "World",
     "audit_mode",

@@ -1,4 +1,8 @@
-"""`world.run_for` / `world.run_until`: the time-advancing scenario primitives (0460)."""
+"""`world.run_for` / `world.run_until`: the time-advancing scenario primitives (0460).
+
+`run_for`'s `faults` parameter is exercised in `test_fault_handles.py` (0470); this file covers the
+time-advance mechanics only.
+"""
 
 from __future__ import annotations
 
@@ -39,16 +43,6 @@ def test_run_for_negative_seconds_raises() -> None:
     async def scenario(world: World) -> None:
         with pytest.raises(SeedloopError):
             await world.run_for(seconds=-1)
-
-    seedloop.check(scenario, seeds=1)
-
-
-def test_run_for_with_faults_is_rejected_not_ignored() -> None:
-    # docs/api.md commits to the `faults` parameter; seed-scheduled fault handles don't exist until
-    # 0470. A silent no-op here would be a correctness trap, so a non-empty faults sequence raises.
-    async def scenario(world: World) -> None:
-        with pytest.raises(SeedloopError, match="not implemented"):
-            await world.run_for(seconds=1, faults=("placeholder",))
 
     seedloop.check(scenario, seeds=1)
 

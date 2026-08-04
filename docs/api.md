@@ -7,9 +7,8 @@ The surface a user writes against. This is the design target for Phases 1–3. *
 partition/heal, and the reliable channel. **Phase 3:** the invariant API (`world.always`,
 `InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`). **Also
 implemented:** the time-advancing primitives `world.run_for(seconds=...)` and
-`world.run_until(predicate, deadline=...)`. **Still design:** seed-scheduled fault handles
-(`partition()`/`slow_link()`/`crash()`) consumed by `run_for(faults=[...])` — `run_for` itself only
-accepts an empty `faults` sequence until they land.
+`world.run_until(predicate, deadline=...)`, and the seed-scheduled fault handles
+(`world.partition()`/`slow_link()`/`crash()`) consumed by `run_for(faults=[...])` (ADR-0022).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
@@ -125,8 +124,6 @@ class World:
     async def run_until(
         self, predicate: Callable[[], bool], *, deadline: float | None = None
     ) -> None: ...
-
-    # --- design target ---
     def partition(self, *groups: Collection[Address]) -> Fault: ...
     def slow_link(
         self, a: Address | None = None, b: Address | None = None, *, factor: float | None = None
@@ -143,11 +140,10 @@ class World:
   `predicate()` is false raises `InvariantError(name)` — which is what `check` catches and ties to the
   seed. Invariants are how a *continuous* property ("never two leaders") is enforced, versus an `assert`
   at the end that only checks the final state.
-- **`run_for`** advances virtual time by `seconds`. `faults` is part of the committed signature but not
-  usable yet — a non-empty sequence raises `SeedloopError` (ADR-0016/ADR-0021); once the fault-handle
-  constructors land, a fault left unparameterized (`world.partition()` with no groups, `slow_link()`
-  with no endpoints) will let the **seed** decide its details — which nodes, when, how long — so chaos
-  is reproducible, not random.
+- **`run_for`** advances virtual time by `seconds`, resolving and scheduling each of `faults` as it does
+  (ADR-0022). A fault left unparameterized (`world.partition()` with no groups, `slow_link()` with no
+  endpoints, `crash()` with no node) lets the **seed** decide its details — which nodes, and (except
+  `crash`'s `at`) when and for how long — so chaos is reproducible, not random. See Faults below.
 - **`run_until`** advances until `predicate()` holds, checked after every scheduling step (the same
   cadence as `always()`). `deadline`, if given, is a **virtual duration from the call** (matching
   `run_for`'s `seconds`): if the predicate has not become true within it, `run_until` raises
@@ -188,9 +184,10 @@ class Transport:  # the concrete simulated network (world.net)
   where the seed delays and reorders messages; `loss`/`duplicate` are per-message probabilities on the
   endpoint's outgoing links, and `reliable=True` gives no-loss, in-order delivery (ignoring
   loss/duplicate) for protocols that assume per-connection ordering (ADR-0006). All implemented.
-- **`partition(*groups)` / `heal()`** split the network and restore it; a cross-group message is dropped
-  at delivery while the split holds (ADR-0016). Seed-*scheduled* faults via `run_for(faults=[...])` are
-  still design.
+- **`partition(*groups)` / `heal()`** split the network and restore it, immediately, right when the
+  scenario calls them; a cross-group message is dropped at delivery while the split holds (ADR-0016).
+  This is a different method from `world.partition()` below — that one returns a seed-*timed* `Fault`
+  handle for `run_for(faults=[...])` rather than acting right away (ADR-0022).
 - **`send`** enqueues a message for `dst`; it returns once enqueued, not on delivery (delivery is a
   later scheduled event whose timing the seed owns). **`recv`** yields the next message for this
   endpoint, blocking in virtual time until one is scheduled to arrive.
@@ -210,22 +207,47 @@ class Node(Protocol):
 
 ## Faults
 
-`Fault` is an opaque handle produced by the `world.partition/slow_link/crash` constructors and consumed
-by `run_for`. The constructors are seed-parameterized: pin the arguments to force a specific fault, or
-leave them out to let the seed choose within the run.
+`Fault` is a public union of three frozen dataclasses, produced by the `world.partition`/`slow_link`/
+`crash` constructors (on `World`, not `world.net`) and consumed by `run_for(faults=[...])`. The
+constructors are seed-parameterized: pin the arguments to force a specific fault, or leave them out to
+let the seed choose within the run. A handle does nothing on its own — it is an inert, immutable record
+of what was pinned until `run_for` resolves and schedules it; the concrete types are exported so a caller
+can `isinstance`-narrow one out of a `faults=[...]` list.
 
 ```python
-class Fault(Protocol): ...  # no user-facing members; pass to run_for(faults=[...])
+Fault: TypeAlias = "PartitionFault | SlowLinkFault | CrashFault"
+
+
+@dataclass(frozen=True)
+class PartitionFault:
+    groups: tuple[frozenset[Address], ...] = ()
+
+
+@dataclass(frozen=True)
+class SlowLinkFault:
+    a: Address | None = None
+    b: Address | None = None
+    factor: float | None = None
+
+
+@dataclass(frozen=True)
+class CrashFault:
+    node: Address | None = None
+    at: float | None = None
 ```
 
 - **`partition(*groups)`** splits the network so messages cross group boundaries only after the
   partition heals. `partition(a, b)` splits the two given groups; `partition()` lets the seed pick a
-  split and its timing.
+  genuine two-way split of the addresses bound when `run_for` schedules it. Timing (when, for how long)
+  is always seed-chosen — there is no parameter to pin it.
 - **`slow_link(a, b, *, factor)`** multiplies latency on the `a↔b` link (or a seed-chosen link); a large
   `factor` is a near-stall short of a full partition. `factor=None` (default) lets the seed choose the
-  multiplier; pin it to force a regime.
-- **`crash(node, *, at)`** stops a node at virtual time `at` (or a seed-chosen time). Recovery semantics
-  (clean stop vs. restart) are settled in Phase 2.
+  multiplier (drawn from `[2.0, 50.0]`); pin it (must be `> 1.0`) to force a regime. Timing is always
+  seed-chosen, same as `partition`.
+- **`crash(node, *, at)`** cuts `node` off the network, both directions, from virtual time `at` onward
+  for the rest of the run — no restart, no heal (a crash-stop model, ADR-0022). `at`, unlike
+  `partition`/`slow_link`, can be pinned: a virtual duration from the `run_for` call that consumes this
+  fault (matching `run_for`'s own `seconds`), left `None` to let the seed choose it.
 
 ## Errors
 

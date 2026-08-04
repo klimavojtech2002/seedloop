@@ -32,12 +32,11 @@ code ever drift, the code is wrong.
 - **Reliable channel** — the opt-in link policy: no-loss, in-order whole-message delivery; not a byte
   stream.
 - **Fault** — an injected disturbance, seed-parameterized. Per-message loss/duplication and
-  partition/heal are implemented on `world.net`; the handle form (slow link, crash) as `Fault` objects
-  consumed by `run_for(faults=[...])` is a design target — `run_for` itself is implemented, but only
-  accepts an empty `faults` sequence until the handles land.
+  partition/heal are implemented on `world.net`; the seed-timed handle form (`world.partition`/
+  `slow_link`/`crash`, returning a `Fault` object) consumed by `run_for(faults=[...])` is implemented too
+  (ADR-0022).
 - **Fault schedule** — the seed-derived set of faults and their virtual times, applied through
-  `run_for(faults=[...])`; chaos made reproducible. Design target — message-level faults ship today,
-  the schedule API is deferred.
+  `run_for(faults=[...])`; chaos made reproducible. Implemented (ADR-0022).
 - **Partition** — a network split where cross-group messages are cut until it heals.
 - **Sub-stream** — one of the independent per-component PRNG streams split from the root seed, so
   components do not perturb each other (ADR-0009).
