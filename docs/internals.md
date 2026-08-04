@@ -7,10 +7,10 @@ non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [g
 The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
 entropy primitives, their assembly into a `World` with `check`/`replay`, and the network with its faults
 (loss, duplication, partition, reliable channel), the invariant API (`world.always`), the
-non-determinism auditor (`audit=True`), and the time-advancing primitives (`world.run_for`/`run_until`)
-— is implemented and tested; only the seed-*scheduled* fault-handle constructors consumed by
-`run_for(faults=[...])` are still design. The load-bearing CPython facts below were checked against the
-target interpreter (CPython 3.13); where a claim depends on a version, it says so.
+non-determinism auditor (`audit=True`), the time-advancing primitives (`world.run_for`/`run_until`), and
+the seed-scheduled fault-handle constructors (`world.partition`/`slow_link`/`crash`, ADR-0022) — is
+implemented and tested. The load-bearing CPython facts below were checked against the target interpreter
+(CPython 3.13); where a claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -168,11 +168,24 @@ delivery is an ordinary timer, network timing obeys the same deterministic heap 
 
 ## Faults as scheduled events
 
-Faults are scheduled the same way. A `Fault` left unparameterized draws its target and timing from the
-`"faults"` sub-stream and registers timers that toggle state: a partition flips a link's reachability at
-its start and clears it at its end; `slow_link` sets a latency multiplier for a window; `crash` sets a
-node's stopped flag at its time. The fault schedule is therefore a deterministic function of the seed,
-which is what makes "chaos" reproducible rather than random.
+Faults are scheduled the same way (ADR-0022). `run_for` first calls `Transport._validate_fault` on every
+entry in `faults` — cheap, entropy-free checks (a pinned value's shape, or whether enough bound addresses
+exist to resolve one) — before committing any of them, so a later invalid fault can never leave an
+earlier valid one already resolved and scheduled. Only once the whole list passes does it call
+`Transport._commit_fault` on each, in list order: a `Fault` left unparameterized draws its target — and,
+for `partition`/`slow_link`, its timing — from the `"faults"` sub-stream, so the order of `faults=[...]`
+is itself part of the run's identity. Each commit registers timers that toggle state: a partition flips a
+link's reachability at its start and clears it at its end (the resolved groups are recorded on the
+timeline alongside the window, so a partition-dependent failure is diagnosable from the trace, not just
+the seed); `slow_link` sets a latency multiplier for a window, fixed once at send time rather than
+re-evaluated at delivery the way reachability is; `crash` adds the node to a permanently-crashed set at
+its time (no clearing — a crash-stop model, not crash-recover), checked in `_deliver` ahead of the
+reachability check so a crashed node's drop reason is never misattributed to a partition. Each scheduled
+fault is keyed by its own monotonic id in a dedicated registry, kept separate from the scenario-driven
+`world.net.partition`/`heal`'s single mutable slot, so one fault's end can never clobber a second,
+independently-timed fault's still-active window; `_reachable` and the latency-multiplier lookup take the
+union/product over every currently active entry. The fault schedule is therefore a deterministic function
+of the seed, which is what makes "chaos" reproducible rather than random.
 
 ## Proving it: the timeline recorder
 

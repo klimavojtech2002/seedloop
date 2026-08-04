@@ -590,6 +590,126 @@ other.
 
 ---
 
+## ADR-0022 — Seed-scheduled fault handles: crash as network-isolation, per-fault registries
+
+**Status:** Accepted
+
+**Context.** ADR-0016 shipped message-level chaos (loss, duplication, scenario-driven partition) but
+deferred the seed-*scheduled* half: `world.partition()`/`slow_link()`/`crash()` as `Fault` handles
+consumed by `run_for(faults=[...])`, where the seed — not the scenario — picks targets and timing.
+Three design questions had no answer in the existing docs: what "crash" means mechanically (`docs/api.md`
+itself flagged "recovery semantics (clean stop vs. restart)" as unsettled); how multiple, independently
+timed faults should compose without one's cleanup undoing another's still-active effect; and whether
+`partition`/`slow_link` timing can be pinned the way `crash`'s `at` can.
+
+**Decision.**
+- **`crash` is network-isolation (fail-stop), not task cancellation, and there is no restart.** `Transport`
+  already decides reachability *at delivery time* (`_reachable`, ADR-0016); `crash` reuses that exact
+  mechanism — a crashed address in a `_crashed: set[Address]` makes every delivery to or from it
+  unreachable, permanently, for the rest of the run. The alternative (cancel the node's own task) needs
+  an address→task mapping `World` does not have: `start(*nodes)` takes bare `Node` objects (just
+  `async def run()`), and the address lives inside whatever `Endpoint` the node's own code happens to
+  bind — there is no reliable handle to cancel. Network-isolation is also the strongest claim the World
+  can truthfully make about "this node is gone": from every other node's perspective, a truly-dead
+  process and one whose sockets all silently vanish are indistinguishable, which is the fidelity seedloop
+  targets (protocol correctness under partial failure, not OS process semantics). The crashed node's own
+  task keeps running (blocked on `recv()` forever, or retrying sends that all get dropped) — inert, not
+  special-cased, cleaned up by teardown like any other pending task. A crash cuts the network at delivery
+  time, so a message already delivered into the node's queue before `at` stays there, and the still-running
+  task can go on consuming it — only what arrives *after* `at` is cut. Recovery/restart is out of scope:
+  it needs a persistence/re-join contract the `Node` protocol does not have, and inventing one here would
+  be a second feature wearing this slice's name.
+- **Fault effects are tracked in per-fault-id registries, not the existing single mutable slot.**
+  `Transport._partition`/`heal()` (ADR-0016) is correct for one scenario-driven partition at a time but
+  wrong for N independently-timed fault-scheduled partitions whose windows can overlap — reusing that slot
+  would let one fault's heal timer erase a second fault's still-active split. Instead `Transport` gains
+  `_fault_partitions`/`_fault_slow_links: dict[int, ...]` keyed by a monotonic fault id, plus `_crashed:
+  set[Address]`. `_reachable` is the union of the scenario partition and every active fault-partition (any
+  one cutting a pair is enough); `_send`'s latency multiplier is the product of every active `slow_link`
+  factor matching the pair. `world.net.partition()`/`heal()` only ever touches the scenario's own slot, so
+  it stays fully independent of the fault registry in both directions — proven by test, not just asserted.
+- **Timing is pinnable only on `crash`.** `docs/api.md`'s committed signatures have no timing keyword on
+  `partition`/`slow_link` — the seed always chooses their window (drawn from `"faults"`, resolved once,
+  when `run_for` hands the fault to the transport). `crash(..., at=...)` is the one fault whose timing can
+  be pinned, as a virtual duration from the `run_for` call (symmetric with `run_for`'s own `seconds` and
+  `run_until`'s `deadline`, ADR-0021), validated `0 <= at <= seconds` against that call's window.
+- **Resolution draws stay on the existing `"faults"` sub-stream** (no new sub-stream; ADR-0009
+  unaffected): target addresses are chosen from `sorted(bound addresses)` for reproducibility independent
+  of dict order; an unresolved `partition()` bipartitions by an independent coin flip per address,
+  re-drawn until both sides are non-empty; `slow_link`'s default factor range is `[2.0, 50.0]`
+  (`docs/api.md`'s "a large factor is a near-stall short of a full partition," the same documented-default
+  pattern as `_net.py`'s existing `_LAT_MIN`/`_LAT_MAX`); a partition/slow-link window is
+  `start = uniform(0, seconds)`, `end = uniform(start, seconds)`, so it always resolves within the call
+  that scheduled it — nothing leaks past `run_for`'s return.
+- **`Fault` is a concrete sealed union (`PartitionFault | SlowLinkFault | CrashFault`), not the empty
+  `Protocol` `docs/api.md` sketched.** An empty `runtime_checkable` `Protocol` matches any object
+  structurally, so it could never actually reject a malformed `faults` entry at runtime. The three frozen
+  dataclasses (in `_faults.py`) give `_validate_fault` a real `isinstance` dispatch and a defense-in-depth
+  re-validation at the `Transport` boundary (they are public, so a caller could construct one directly,
+  bypassing `World.partition`/`slow_link`/`crash`'s own eager checks) — including `PartitionFault.groups`,
+  which `World.partition` itself never validates (it just wraps the arguments): a non-iterable or
+  non-address element is rejected as `SeedloopError` rather than escaping as a bare `TypeError`, and
+  overlapping groups are rejected outright, since `_cut` matches only the first group containing an
+  address, so two addresses nominally "in the same" listed group could still end up cut from each other.
+- **`world.partition()`/`world.net.partition()` keep their existing names, not renamed.** They are
+  genuinely different (deferred/seed-timed handle-returning vs. immediate/scenario-timed, applied right
+  away), and `docs/api.md` has committed to both spellings since Phase 2/3 — a public repo's already-
+  published surface. Mitigated with an explicit cross-reference in both docstrings rather than a rename
+  (Vojtěch's explicit call, weighed against renaming one side to `schedule_partition`).
+- **`run_for` validates every fault in `faults` before committing any of them** (`Transport._validate_fault`
+  then `_commit_fault`, two full passes over the list), so an invalid fault later in the list can never
+  leave an earlier, valid one already committed — its `"faults"` draw consumed, a timeline event recorded,
+  a timer armed — despite the call raising, which a scenario catching the `SeedloopError` could observe.
+  Every check in `_validate_fault` is cheap (pinned-value shape, or "enough bound addresses to resolve
+  from") and draws no entropy, so validating the whole list up front costs nothing extra. The same
+  boundary decides exactly how many bound addresses an unresolved side needs: `slow_link` with only one
+  side pinned needs one candidate distinct from that side, not "two bound overall" — pinning a side that
+  is not itself bound (the "born dead" case) still needs only one other bound address to resolve the rest.
+- **The `faults` list order is part of a run's identity, and this is stated, not left implicit.**
+  Resolution draws sequentially from the one shared `"faults"` stream in list order, so swapping two
+  unresolved handles in `faults=[...]` at the same seed resolves completely different targets and timing —
+  correct and unavoidable given ADR-0009's single-stream-per-component design, but a user reordering a list
+  for readability would otherwise silently lose their reproduction.
+- **`fault-partition-scheduled` records the resolved groups, not just the window** (`tuple(tuple(sorted(g))
+  for g in groups)`, sorted for a stable repr) — partition is the one fault kind whose *target* is a whole
+  topology from N coin flips rather than a single value, so recording only the window would leave it the
+  one kind whose target never appears on the timeline, understating the "diagnosable from the trace" claim
+  below. `fault-crash-scheduled`/`fault-crash` also carry a `fault_id`, for the same event-shape
+  consistency `partition`/`slow_link` already had.
+- **Resolving one side of `slow_link` must exclude the already-known other side, not just draw from every
+  bound address.** With only `b` pinned, drawing `a` from the full bound set can land on `a == b` — a
+  1-element `frozenset((a, b))` that never matches a real `(src, dst)` pair, so the fault is scheduled,
+  its begin/end fire, and the timeline records a slow-link that silently never slows anything: the worst
+  failure mode for a tool whose product is trace honesty, since the run looks like it worked. Resolution
+  is order-sensitive by side, not just by fault: whichever of `a`/`b` is `None` draws from
+  `bound_addresses - {the other side, once known}`, whether that other side was pinned or drawn moments
+  earlier in the same commit.
+- **`slow_link`'s multiplier is fixed at send time; partition/crash reachability is re-evaluated at delivery
+  time.** Documented explicitly (here and at the call site) because it is a real, deterministic asymmetry a
+  trace reader cannot derive from watching partition/crash behave the other way: a message already in
+  flight when a slow-link window opens is not slowed, and one sent inside the window stays slowed even
+  after the window has closed by the time it is delivered.
+- **A crashed node's drop reason is checked ahead of the partition/reachability check in `_deliver`, and
+  this is load-bearing, not incidental ordering.** A message that is both crossing an active partition and
+  touching a crashed node must report `drop-crashed` — permanent, unlike a partition, which heals — so a
+  debugger reading the trace is pointed at the right cause.
+
+**Consequences.**
+- A partition/slow-link/crash-dependent bug found by `check` is reproducible: the same seed resolves the
+  same targets and timing, `replay` reproduces it, and the resolved parameters themselves are on the
+  timeline (`fault-partition-scheduled`/`fault-slow-link-scheduled`/`fault-crash-scheduled`), so a failure
+  is diagnosable from the trace, not just re-derivable by re-running.
+- Two independently-scheduled faults never clobber each other's state, including a scenario-driven
+  `world.net.partition()`/`heal()` running alongside a fault-scheduled one — proven directly (white-box)
+  rather than only through statistical seed sweeps.
+- A crashed node's own task is not stopped; documented plainly rather than silently implied to be "gone"
+  in the OS sense. A future slice wanting real task cancellation needs `start` to learn about addresses
+  first — a bigger change than this one.
+- `run_for(faults=[...])`'s public signature (`docs/api.md`) is now fully implemented; no further "design
+  target" marker remains on the fault-handle surface.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

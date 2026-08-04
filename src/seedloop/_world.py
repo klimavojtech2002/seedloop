@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from typing import Protocol, runtime_checkable
 
 from seedloop._entropy import substream
+from seedloop._faults import CrashFault, Fault, PartitionFault, SlowLinkFault
 from seedloop._loop import DeterministicLoop
-from seedloop._net import Transport
+from seedloop._net import Address, Transport
 from seedloop._trace import Timeline
 from seedloop.errors import InvariantError, SeedloopError
 
@@ -82,23 +83,70 @@ class World:
             if not predicate():
                 raise InvariantError(name, self._loop.time())
 
-    async def run_for(self, *, seconds: float, faults: Sequence[object] = ()) -> None:
-        """Advance virtual time by ``seconds``.
+    async def run_for(self, *, seconds: float, faults: Sequence[Fault] = ()) -> None:
+        """Advance virtual time by ``seconds``, injecting any seed-scheduled ``faults``.
 
-        ``faults`` is part of the committed public signature (``docs/api.md``) but seed-scheduled
-        fault injection is not implemented yet (ADR-0016) — passing any is rejected outright rather
-        than silently ignored, since a silent no-op would be a correctness trap for a caller who
-        assumes the documented signature already works. Use ``world.net.partition``/``heal`` for
-        scenario-driven faults today.
+        Each ``Fault`` (from ``world.partition``/``slow_link``/``crash``) is resolved and
+        scheduled here — any field its constructor left unset is drawn from the seed's
+        ``"faults"`` sub-stream, in list order, so reordering ``faults`` changes what a seed
+        resolves (ADR-0022). Every fault is validated *before* any is resolved or scheduled, so
+        an invalid fault later in the list cannot leave an earlier one already committed — a
+        partial commit despite the call raising. Use ``world.net.partition``/``heal`` instead for
+        an immediate, scenario-timed partition rather than a seed-timed one.
         """
-        if faults:
-            raise SeedloopError(
-                "run_for(faults=...) is not implemented yet (seed-scheduled faults are a later "
-                "slice, ADR-0016); use world.net.partition/heal for scenario-driven faults today"
-            )
         if not math.isfinite(seconds) or seconds < 0:
             raise SeedloopError(f"seconds must be a finite number >= 0, got {seconds!r}")
+        for fault in faults:
+            self.net._validate_fault(fault, seconds)
+        for fault in faults:
+            self.net._commit_fault(fault, seconds)
         await asyncio.sleep(seconds)
+
+    def partition(self, *groups: Collection[Address]) -> Fault:
+        """Build a seed-timed partition ``Fault`` for ``run_for(faults=[...])``.
+
+        Same group semantics as ``world.net.partition``: nodes in different listed groups cannot
+        reach each other while the fault is active; a node in no listed group stays connected to
+        everyone. ``groups`` must not overlap (an address in two listed groups is rejected, since
+        which one it is cut from would be ambiguous). ``groups=()`` lets the seed pick a genuine
+        two-way split of the addresses bound when ``run_for`` schedules it; timing (when, how
+        long) is always seed-chosen — there is no parameter to pin it. For an immediate,
+        scenario-timed split instead, use ``world.net.partition`` (a different method, on
+        ``world.net``, applied right away).
+        """
+        return PartitionFault(tuple(frozenset(g) for g in groups))
+
+    def slow_link(
+        self,
+        a: Address | None = None,
+        b: Address | None = None,
+        *,
+        factor: float | None = None,
+    ) -> Fault:
+        """Build a seed-timed slow-link ``Fault`` for ``run_for(faults=[...])``.
+
+        Any of ``a``, ``b``, ``factor`` left ``None`` is chosen by the seed when ``run_for``
+        schedules this fault; timing is always seed-chosen. ``factor``, if given, must be finite and
+        greater than ``1.0``.
+        """
+        if factor is not None and (not math.isfinite(factor) or factor <= 1.0):
+            raise SeedloopError(f"slow_link factor must be finite and > 1.0, got {factor!r}")
+        if a is not None and a == b:
+            raise SeedloopError(f"slow_link requires two distinct addresses, got a == b == {a!r}")
+        return SlowLinkFault(a, b, factor)
+
+    def crash(self, node: Address | None = None, *, at: float | None = None) -> Fault:
+        """Build a crash ``Fault`` for ``run_for(faults=[...])``.
+
+        Cuts ``node`` off the network, both directions, from virtual time ``at`` onward for the
+        rest of the run — no restart, no heal. ``node`` left ``None`` is chosen by the seed from the
+        addresses bound when ``run_for`` schedules it. ``at``, unlike ``partition``/``slow_link``,
+        can be pinned: a virtual duration from the ``run_for`` call that consumes this fault
+        (matching ``run_for``'s own ``seconds``), left ``None`` to let the seed choose it.
+        """
+        if at is not None and (not math.isfinite(at) or at < 0):
+            raise SeedloopError(f"crash(at={at}) must be finite and >= 0")
+        return CrashFault(node, at)
 
     async def run_until(
         self, predicate: Callable[[], bool], *, deadline: float | None = None

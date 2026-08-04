@@ -4,7 +4,10 @@
 # `python scripts/mutation_sweep.py --update`, then restore the reasons and review every change.
 src/seedloop/_loop.py:36 int 0->1  # timer tie-break counter start; only relative order matters
 src/seedloop/_loop.py:37 int 0->1  # task creation-index start; only relative order matters
-src/seedloop/_net.py:122 cmp LessThan->LessThanEqual  # random() == loss is measure-zero for floats
-src/seedloop/_net.py:126 cmp LessThan->LessThanEqual  # random() == duplicate is measure-zero
+src/seedloop/_net.py:72 int 0->1  # fault-id counter start; only relative uniqueness matters
+src/seedloop/_net.py:251 cmp LessThan->LessThanEqual  # random() == 0.5 is measure-zero for floats
+src/seedloop/_net.py:284 bool And->Or  # type-narrowing assert; every branch above resolves both a and b, so it holds under either operator
+src/seedloop/_net.py:362 cmp LessThan->LessThanEqual  # random() == loss is measure-zero for floats
+src/seedloop/_net.py:366 cmp LessThan->LessThanEqual  # random() == duplicate is measure-zero
 src/seedloop/_run.py:27 bool True->False  # CheckResult frozen=False; immutability is never relied on
-src/seedloop/_world.py:207 int 1->0  # getattr default -1->0, unreachable: every task is stamped
+src/seedloop/_world.py:255 int 1->0  # getattr default -1->0, unreachable: every task is stamped

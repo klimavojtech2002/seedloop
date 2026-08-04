@@ -85,9 +85,25 @@ The same seed injects the same loss, duplication, and (under a scenario's topolo
 effects at the same virtual times every run — which is what makes a partition-dependent bug reproducible
 (the DST payoff: `check` finds the failing seed, `replay` reproduces it).
 
-*Design (deferred, ADR-0016):* seed-*scheduled* faults via `world.run_for(seconds, faults=[...])` where
-the seed chooses partition timing, the fault-handle constructors (`partition()`/`slow_link()`/`crash()`),
-and node crash. The scenario drives partition topology explicitly for now.
+**Seed-scheduled faults** (ADR-0022): `world.run_for(seconds, faults=[...])` also accepts `Fault` handles
+from `world.partition()`/`slow_link()`/`crash()` — a different set of methods from `world.net.partition`/
+`heal` above, returning an inert handle `run_for` resolves and schedules rather than acting immediately.
+Any field a handle's constructor leaves unset (which nodes; for `partition`/`slow_link`, also when and
+for how long) is drawn from the `"faults"` sub-stream when `run_for` schedules it. `crash(node, at)` cuts
+a node off the network, both directions, from `at` onward for the rest of the run — no restart, a
+crash-stop model, checked at delivery time the same way partition's reachability is (both evaluated in
+`_deliver`, crash first, since a crashed node's drop reason must never read as a partition that could
+heal) rather than by touching the node's own task (`World` has no address→task mapping to touch).
+Multiple scheduled faults, and a
+scenario-driven `world.net.partition()`/`heal()` running alongside them, compose independently: each
+scheduled fault gets its own registry entry, so one's cleanup never disturbs another's still-active
+effect. `run_for` validates every fault in `faults` before resolving or scheduling any of them, so a
+later invalid fault never leaves an earlier valid one already committed. Resolution draws sequentially
+from the `"faults"` sub-stream in list order, so the order of `faults=[...]` is part of the run's
+identity — reordering it changes what a seed resolves. A `slow_link`'s multiplier is fixed once, at
+send time; partition/crash reachability is re-evaluated at delivery time — a message already in flight
+when a slow-link window opens is not slowed, and one sent inside the window stays slowed even after the
+window has closed by the time it arrives. See `docs/decisions.md` ADR-0022 for the full design.
 
 ## What this model is not
 

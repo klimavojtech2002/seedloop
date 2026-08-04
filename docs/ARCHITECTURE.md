@@ -4,10 +4,10 @@ How `seedloop` makes Python `asyncio` deterministic, how a run works end to end,
 that gets there. Phases 1–3 are built: the deterministic core, the simulated network with fault
 injection, the invariant API, the non-determinism auditor, and the worked Raft demo. The optional
 Hypothesis integration ships as `seedloop[hypothesis]`; `world.run_for`/`run_until` (the time-advancing
-scenario primitives) are implemented, and the seed-scheduled fault-handle constructors that plug into
-`run_for` (`partition()`/`slow_link()`/`crash()` as `Fault` objects) are deferred. The determinism boundary —
-what is controlled and what is deliberately not — is in [scope.md](scope.md), and the reasoning behind
-the non-obvious choices is in [decisions.md](decisions.md).
+scenario primitives) and the seed-scheduled fault-handle constructors that plug into `run_for`
+(`world.partition()`/`slow_link()`/`crash()` as `Fault` objects, ADR-0022) are all implemented. The
+determinism boundary — what is controlled and what is deliberately not — is in [scope.md](scope.md), and
+the reasoning behind the non-obvious choices is in [decisions.md](decisions.md).
 
 ## The key fact that makes this tractable
 
