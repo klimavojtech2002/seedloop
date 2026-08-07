@@ -12,6 +12,7 @@ and the simulated network's delivery timing — not callback order.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import math
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from typing import Protocol, runtime_checkable
@@ -232,8 +233,49 @@ class World:
 
     def _drive(self, main: Awaitable[None]) -> None:
         """Run the scenario to completion, surface any started-node failure, then close the loop."""
+        main_task = self._loop.create_task(main)
         try:
-            self._loop.run_until_complete(main)
+            try:
+                self._loop.run_until_complete(main_task)
+            finally:
+                # Invariants describe the logical run, not cancellation cleanup — clear them
+                # before driving the loop any further (including settling main_task below), the
+                # same way teardown already did for its own cancellation gather. Without this, a
+                # node advancing during the settle steps below can flip an invariant false, and
+                # the settle loop's own exception handling (needed for the reason in the next
+                # comment) would silently discard it — a real regression an independent audit
+                # caught in an earlier version of this fix, worse than the bug it replaced: a
+                # violated invariant would report as a clean, passing run.
+                self._loop._sl_after_step_hooks.clear()
+                # main_task can settle (with an exception unrelated to the one that just
+                # propagated) on a LATER _run_once step than the hard hook that ended the call
+                # above: a run_until predicate's exception (ADR-0021) is delivered by resolving
+                # main_task's own suspended await through a callback scheduled one step after the
+                # after-step hook loop runs. asyncio.run_until_complete registers its own internal
+                # completion callback on main_task every time it is called on it; that callback is
+                # scheduled (via call_soon) the moment main_task settles, and if main_task settles
+                # after THIS call has already exited, the callback is left sitting, unprocessed, in
+                # the loop's ready queue. Left there, it fires during the teardown
+                # run_until_complete below and calls loop.stop() for THIS call's target instead of
+                # teardown's, ending it before its own future (the cancellation gather) is done —
+                # surfacing as a RuntimeError masking the real failure raised above.
+                #
+                # Cancel main_task if it is not already done, and drive it to completion in its
+                # own isolated cycle so any such callback fires and is consumed here. Then run
+                # run_until_complete on it once more regardless — main_task is now guaranteed
+                # already done, so this cannot raise the teardown's RuntimeError itself, and it
+                # flushes any completion callback still scheduled from an earlier cycle (the exact
+                # case above) before teardown ever starts.
+                if not main_task.done():
+                    main_task.cancel()
+                while not main_task.done():
+                    with contextlib.suppress(BaseException):
+                        self._loop.run_until_complete(main_task)
+                # main_task is now guaranteed already done, so this cannot raise the RuntimeError
+                # described above; it only flushes a completion callback left over from an earlier
+                # cycle (the exact case this whole block exists to handle).
+                with contextlib.suppress(BaseException):
+                    self._loop.run_until_complete(main_task)
             # The scenario finished without raising; surface the first started node that failed
             # (a crashed node would otherwise be an orphaned task, only logged).
             for task in self._started:
@@ -241,10 +283,7 @@ class World:
                 if exc is not None:
                     raise exc
         finally:
-            # Invariants describe the logical run, not cancellation cleanup — stop checking them
-            # before teardown, so a node mutating observed state in its cancel handler cannot raise
-            # a spurious InvariantError (and cannot mask the real failure raised above).
-            self._loop._sl_after_step_hooks.clear()
+            # Hooks are already cleared (above, before main_task was settled).
             # Cancel every task still pending — started nodes and any the scenario spawned — and let
             # the cancellations process, so the loop closes without "Task was destroyed but it is
             # pending" warnings (a node loop that never returns, or a recv stuck under a fault).
@@ -257,13 +296,17 @@ class World:
                 task.cancel()
             if pending:
                 self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            # Every started task is done now (finished, failed, or just cancelled above). Retrieve
-            # the failures the run did not surface — a node that crashed while the scenario itself
-            # raised, or a second crashed node behind the one re-raised above. Their exceptions
-            # were never read, so at garbage collection asyncio would log "Task exception was never
-            # retrieved" into an otherwise clean run. Reading them changes no outcome (the run's
-            # failure is already in flight); cancelled tasks are skipped because exception() would
-            # raise their CancelledError.
+            # Every started task is done now (finished, failed, or just cancelled above), and so is
+            # main_task (settled above). Retrieve the failures the run did not surface — a node
+            # that crashed while the scenario itself raised, a second crashed node behind the one
+            # re-raised above, or main_task settling with a different exception than the one that
+            # actually propagated (e.g. run_until's own predicate exception, superseded by a
+            # same-step invariant, ADR-0021). Their exceptions were never read, so at garbage
+            # collection asyncio would log "Task exception was never retrieved" into an otherwise
+            # clean run. Reading them changes no outcome (the run's failure is already in flight);
+            # cancelled tasks are skipped because exception() would raise their CancelledError.
+            if not main_task.cancelled():
+                main_task.exception()
             for task in self._started:
                 if not task.cancelled():
                     task.exception()
