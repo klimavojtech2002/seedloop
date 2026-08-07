@@ -715,6 +715,17 @@ timed faults should compose without one's cleanup undoing another's still-active
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the
   runtime tripwires of ADR-0008. Deferred: tripwires carry the guarantee; a static layer is an
   ergonomics add to settle once Phase 3 is in use, not before.
+- **A `world.start()`-ed task can violate an `always()` invariant just after the scenario coroutine
+  returns, uncaught.** `World._drive` stops evaluating invariant hooks the moment the scenario itself
+  completes (documented on `always()`: "not during teardown"), so a started task's *ordinary*
+  execution — not a cancellation handler, just its normal next step — that has not yet run at that
+  instant can go on to violate an invariant during the window before teardown cancels it, and nothing
+  checks for it: the run reports a clean pass. Found by a holistic pre-0.4.0 release audit;
+  pre-existing (reproduces identically on `v0.3.2`), not introduced by any 0.4.0 slice. Deferred
+  rather than patched into 0.4.0 under release pressure: a correct fix needs its own design pass —
+  how many further steps (if any) should still be checked before teardown begins, and how that
+  interacts with the original reason invariants stop being checked at all (a node's own cancel
+  handler mutating state must not manufacture a false violation, ADR pending its own slice).
 
 *Resolved since the first draft:* **naming** — `seedloop` is adopted as the name (free on PyPI at the
 time of writing; confirm at first release). **Reliable-channel fidelity** (ADR-0006 opt-in) — in-order,

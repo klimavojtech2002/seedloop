@@ -255,6 +255,46 @@ def test_invariant_still_fires_while_run_until_is_pending() -> None:
     assert result.error.name == "stays-ok"
 
 
+def test_invariant_still_surfaces_with_a_started_node_still_pending() -> None:
+    # test_invariant_still_fires_while_run_until_is_pending above uses a helper task that finishes
+    # in the same step as the collision, so nothing is left pending at teardown -- the one
+    # condition that let a real defect through three prior audit rounds and a holistic release
+    # audit (0.4.0): a run_until predicate that itself raises resolves the scenario task through a
+    # callback scheduled one step after the after-step hooks run, one step later than an
+    # always()-hard-hook failure in the same collision; asyncio.run_until_complete's own internal
+    # completion callback for that resolution can then fire late, during World._drive's teardown
+    # run_until_complete, and stop it before its own target (the cancellation gather) is done --
+    # surfacing a bare RuntimeError instead of the real InvariantError. A world.start()-ed node
+    # that never returns on its own is what leaves teardown with real work still pending when this
+    # happens; the vast majority of real scenarios have at least one.
+    async def scenario(world: World) -> None:
+        class ForeverNode:
+            async def run(self) -> None:
+                while True:
+                    await asyncio.sleep(1)
+
+        state = {"n": 0}
+        world.always(lambda: state["n"] < 5, name="bound")
+
+        async def bumper() -> None:
+            await asyncio.sleep(0.5)
+            state["n"] = 5
+
+        def flaky() -> bool:
+            if world.now() >= 0.5:
+                raise ValueError("predicate bug")
+            return False
+
+        world.start(ForeverNode())
+        bumper_task = asyncio.ensure_future(bumper())
+        await world.run_until(flaky, deadline=10)
+        await bumper_task
+
+    result = seedloop.check(scenario, seeds=1, on_failure="return")
+    assert isinstance(result.error, InvariantError)
+    assert result.error.name == "bound"
+
+
 def test_sequential_run_until_calls_clean_up_their_hooks() -> None:
     async def scenario(world: World) -> None:
         state = {"a": False, "b": False}
