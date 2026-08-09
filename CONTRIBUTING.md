@@ -1,8 +1,9 @@
 # Contributing
 
-seedloop is a built, tested library (the planned roadmap is complete through v0.3.0); the documentation
-under [docs/](docs/) is the design reference, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes
-how a run works end to end. This file is how to work on the code.
+seedloop is a built, tested library; the planned roadmap (Phases 1 through 3, plus the ergonomics work
+that followed) is complete. The documentation under [docs/](docs/) is the design reference, and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes how a run works end to end. This file is how to
+work on the code.
 
 ## Requirements
 

@@ -18,6 +18,9 @@ name where a rename would be costly.
 
 ## The shape of a test
 
+`RaftNode` and `at_most_one_leader` below stand in for your own protocol code and invariant; every
+seedloop call shown runs on the current release.
+
 ```python
 import seedloop
 

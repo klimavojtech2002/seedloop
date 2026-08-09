@@ -82,6 +82,12 @@ Across a matrix of **OS × Python**: Linux, Windows, macOS × the supported CPyt
 timeline that differs between Linux and Windows for the same seed would expose a hidden platform entropy
 source (path hashing, default encodings), so equality must hold across the matrix, not just on one OS.
 
+A separate CI job runs the **mutation gate** (ADR-0019): `scripts/mutation_sweep.py` breaks the library
+one change at a time and fails if the test suite does not catch it, so a passing suite means "a
+regression would fail a test," not just "the lines ran." A survivor is either a real coverage gap, closed
+with a new test, or a genuinely equivalent mutant, recorded with its reason in
+`scripts/mutation_baseline.txt`.
+
 ## What each check guarantees
 
 | Check | What it guarantees |
@@ -91,6 +97,7 @@ source (path hashing, default encodings), so equality must hold across the matri
 | `pytest -q` | logic is correct, including edge and adversarial cases |
 | Replay-equivalence harness | determinism is proven, not assumed |
 | Boundary tests | out-of-boundary use is rejected, never run silently |
+| Mutation gate | a real code change would be caught by a test, not just that the lines ran |
 
 Coverage is judged by whether the entropy paths and boundary rejections are exercised, not by a headline
 percentage — a high number over trivial tests proves nothing.
