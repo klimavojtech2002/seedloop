@@ -189,13 +189,14 @@ of the seed, which is what makes "chaos" reproducible rather than random.
 
 ## Proving it: the timeline recorder
 
-Determinism is *proven by replay*, not asserted (the prime rule). In Phase 1 the **timeline** is
-user-driven: `world.record(event)` appends a `(virtual_time, event)` pair, so a scenario logs the
-decisions whose reproducibility it cares about (its `rng` draws, its timed actions). Two runs of the same
-seed must produce byte-identical timelines; a replay-equivalence test runs a seed twice and asserts the
-traces are equal. This works because Phase-1 scheduling is deterministic (faithful FIFO + virtual clock),
-so a scenario that records its decisions captures everything that can vary. The automatic per-event
-recorder — every callback, message, and fault stamped with stable ids — is Phase 2 work, when the
-network gives events natural identities; until then the contract is "same seed → same recorded
-timeline," and identities outside that (Python `id()`, `repr`, asyncio task names) are not part of it.
-The harness and the rest of the verification strategy are in [testing.md](testing.md).
+Determinism is *proven by replay*, not asserted (the prime rule). The **timeline** has two sources.
+Scenario code adds entries itself: `world.record(event)` appends a `(virtual_time, event)` pair, so a
+scenario logs the decisions whose reproducibility it cares about (its `rng` draws, its timed actions).
+The network and fault scheduler add the rest automatically, stamped with the monotonic message and fault
+ids described above (`send`, `deliver`, `drop`, `drop-partitioned`, `fault-partition-begin`, and so on) so
+a partition- or timing-dependent bug shows up in the trace without a scenario having to record it by
+hand. Two runs of the same seed must produce byte-identical timelines; a replay-equivalence test runs a
+seed twice and asserts the traces are equal. This works because scheduling is deterministic (faithful
+FIFO + virtual clock), so the two sources together capture everything that can vary. Python `id()`,
+`repr`, and asyncio task names are not part of the contract; the monotonic ids are. The harness and the
+rest of the verification strategy are in [testing.md](testing.md).

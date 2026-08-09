@@ -135,6 +135,12 @@ Each phase is independently useful, so the project delivers value before it is "
    shrinking, and a non-determinism auditor that flags entropy leaks (uncontrolled `os.urandom`, real
    threads, real time) so users learn where their code steps outside the supported boundary.
 
+Three further additions have since landed, outside the original three-phase plan: a replay-stability pin
+that locks one canonical scenario's timeline in CI, the `world.run_for`/`run_until` time-advancing
+primitives, and the seed-scheduled fault-handle constructors (`world.partition()`/`slow_link()`/`crash()`)
+that plug into `run_for`. All are implemented and tested; see [decisions.md](decisions.md) ADR-0020
+through ADR-0022 for the reasoning behind each.
+
 ## The demonstration
 
 The repository ships a worked example that is also the proof: a small Raft (or CRDT) implementation in

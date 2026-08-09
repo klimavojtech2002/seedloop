@@ -33,9 +33,11 @@ does not exist at all. `seedloop` is that library.
 
 You write your protocol or algorithm against an abstract transport (the
 [sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this — everything shown runs on the current release; the full
-API, including the seed-scheduled fault handles (`world.partition()`/`slow_link()`/`crash()` passed to
-`world.run_for`), is in [docs/api.md](docs/api.md):
+world it fully controls. A test looks like this. `RaftNode` and `at_most_one_leader` stand in for your
+own protocol code and invariant; every seedloop call shown here (`world.start`, `world.always`,
+`world.net.partition`/`heal`, `seedloop.check`) runs on the current release. The full API, including the
+seed-scheduled fault handles (`world.partition()`/`slow_link()`/`crash()` passed to `world.run_for`), is
+in [docs/api.md](docs/api.md):
 
 ```python
 import asyncio
@@ -124,17 +126,20 @@ keeps the guarantee real.
 
 ## Status
 
-The planned build is **complete**: the deterministic core (custom event loop, virtual
-clock with autojump, seeded entropy, the `World` / `check` / `replay` API), the simulated network with
-fault injection (loss, duplication, partitions), the `world.always` invariant API, the non-determinism
-auditor (`audit=True`), and the worked Raft demo (which runs today) — so `asyncio` runs are reproducible
-and instant, a partition- or timing-dependent bug replays identically from its seed, and an uncontrolled
-entropy source fails loudly under audit, and property-based exploration ships as an optional extra
-(`pip install seedloop[hypothesis]` → `seedloop.hypothesis`, Hypothesis-driven seed/input generation
-and shrinking over deterministic runs), and the time-advancing `world.run_for`/`run_until` primitives
-together with the seed-scheduled fault-handle constructors (`world.partition()`/`slow_link()`/`crash()`)
-that plug into `run_for`. The full API is in
-[docs/api.md](docs/api.md) and the phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+The planned build is **complete**. The deterministic core (custom event loop, virtual clock with
+autojump, seeded entropy, the `World` / `check` / `replay` API), the simulated network with fault
+injection (loss, duplication, partitions), the `world.always` invariant API, and the non-determinism
+auditor (`audit=True`) are all implemented and tested, alongside the worked Raft demo that runs today.
+
+Three further additions have since landed: seed-scheduled fault handles
+(`world.partition()`/`slow_link()`/`crash()` passed to `world.run_for`), the time-advancing
+`world.run_for`/`run_until` primitives, and an optional Hypothesis integration
+(`pip install seedloop[hypothesis]` for `seedloop.hypothesis`: seed and input generation with shrinking,
+over runs that stay deterministic). A replay-stability pin locks one canonical scenario's timeline in
+CI, so a change that would silently shift recorded seeds fails the build instead.
+
+The full API is in [docs/api.md](docs/api.md) and the phased build in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Why it exists
 
