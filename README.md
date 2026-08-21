@@ -1,12 +1,11 @@
 # seedloop
 
-Deterministic simulation testing for Python. Run your concurrent async logic through thousands of
-controlled, reproducible timelines — varying message timing and delivery order, injecting network
-faults, partitions, and delays — to surface the rare concurrency bug that shows up once in a million
-runs, and replay it exactly from a seed.
+Deterministic simulation testing for Python `asyncio`: run concurrent code through thousands of
+seeded, reproducible timelines — varying message timing, injecting network faults and partitions —
+to find the concurrency bug that shows up once in a million runs, then replay it exactly from a seed.
 
-It brings the FoundationDB / TigerBeetle / Antithesis style of reliability testing — until now living
-only in Rust, C++, and Java — to Python's `asyncio`, as a `pip`-installable library.
+This is the FoundationDB / TigerBeetle / Antithesis style of reliability testing, until now available
+only in Rust, C++, and Java. `seedloop` brings it to Python as a `pip`-installable library.
 
 [![CI](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml/badge.svg)](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/seedloop)](https://pypi.org/project/seedloop/)
@@ -14,30 +13,25 @@ only in Rust, C++, and Java — to Python's `asyncio`, as a `pip`-installable li
 
 ## The problem
 
-Concurrency bugs are the worst bugs. A protocol or state machine works in every test, then once a
-week in CI a test fails, and nobody can reproduce it — because the failure depended on an exact
-interleaving of events, a message arriving late, a partition healing at the wrong moment. You cannot
-fix what you cannot reproduce, so these bugs are patched by guesswork and survive for years.
+Concurrency bugs depend on an exact interleaving of events — a message arriving late, a partition
+healing at the wrong moment. A test suite that can't reproduce the interleaving can't reproduce the
+bug, so it gets patched by guesswork and survives for years.
 
-Deterministic simulation testing (DST) inverts this. It takes total control of every source of
-nondeterminism — scheduling order, time, randomness, the network — and drives them all from a single
-seed. The same seed produces the same timeline, so the same bug, every time. You explore thousands of
-seeds to hunt for failures, and when one is found, the seed *is* the reproduction: replay it and the
-bug happens again, deterministically, every run.
+Deterministic simulation testing (DST) controls every source of nondeterminism — scheduling, time,
+randomness, the network — from a single seed. Same seed, same timeline, same bug, every time. Sweep
+thousands of seeds to find a failure; the seed that found it is the reproduction.
 
-This is how FoundationDB reached its reliability record. It exists as a polished library in Rust
-(`madsim`, `turmoil`). In Python — where a great deal of distributed and protocol code is written — it
-does not exist at all. `seedloop` is that library.
+## Usage
 
-## What you do with it
+```
+pip install seedloop
+```
 
-You write your protocol or algorithm against an abstract transport (the
-[sans-I/O](https://sans-io.readthedocs.io/) style), and `seedloop` runs it inside a deterministic
-world it fully controls. A test looks like this. `RaftNode` and `at_most_one_leader` stand in for your
-own protocol code and invariant; every seedloop call shown here (`world.start`, `world.always`,
-`world.net.partition`/`heal`, `seedloop.check`) runs on the current release. The full API, including the
-seed-scheduled fault handles (`world.partition()`/`slow_link()`/`crash()` passed to `world.run_for`), is
-in [docs/api.md](docs/api.md):
+Write your protocol against an abstract transport ([sans-I/O](https://sans-io.readthedocs.io/)), and
+`seedloop` runs it inside a world it fully controls:
+
+`RaftNode` and `at_most_one_leader` below stand in for your own protocol code and invariant; every
+`world`/`seedloop` call shown runs on the current release.
 
 ```python
 import asyncio
@@ -45,15 +39,11 @@ import seedloop
 
 
 async def scenario(world: seedloop.World) -> None:
-    # Spin up your nodes; they send messages through the simulated network.
     nodes = [RaftNode(addr, world.net) for addr in range(5)]
     world.start(*nodes)
 
-    # State the invariant that must hold at every step, not just at the end.
     world.always(lambda: at_most_one_leader(nodes), name="at-most-one-leader")
 
-    # Inject chaos: run a while, split the network, heal it, let the cluster recover.
-    # The seed decides every message's timing, so each seed is a different timeline.
     await asyncio.sleep(2)
     world.net.partition({0, 1}, {2, 3, 4})
     await asyncio.sleep(2)
@@ -61,99 +51,75 @@ async def scenario(world: seedloop.World) -> None:
     await asyncio.sleep(2)
 
 
-# Hunt across 10,000 seeded timelines. A failure is re-raised tagged with its seed:
-#   seedloop: failing seed=4823 (replay with seedloop.replay)
+# seedloop: failing seed=4823 (replay with seedloop.replay)
 seedloop.check(scenario, seeds=10_000)
 ```
 
-`seedloop.replay(scenario, seed=4823)` re-runs that exact timeline, deterministically, as many times
-as you need to debug it. The full API is in [docs/api.md](docs/api.md).
+`seedloop.replay(scenario, seed=4823)` re-runs that exact timeline as many times as needed to debug
+it. Full API, including the seed-scheduled fault handles (`world.partition()`/`slow_link()`/`crash()`
+passed to `world.run_for`), in [docs/api.md](docs/api.md).
 
-## The worked proof: a Raft split-brain, found and replayed
+## Worked proof: a Raft split-brain, found and replayed
 
-A small Raft leader election ships as a demo. With a deliberate, labelled flaw — a node that omits the
-single-vote-per-term rule — a seed sweep finds the timing where two nodes both win an election in the
-same term (split-brain), and replays it from the seed. The corrected election passes the same sweep, so
-the violation is the toggled flaw, not the harness: in a three-node cluster the shared third voter can
-only break the tie once under the single-vote rule, so one candidate gets two votes and the other one —
-never two leaders.
+A small Raft leader-election demo ships with a labelled flaw — a node that skips the
+single-vote-per-term rule. A seed sweep finds the timing where two nodes win the same term
+(split-brain) and replays it; the corrected election passes the same sweep clean.
 
 ```
 $ python -m seedloop.demos.raft
-seedloop Raft election demo - hunting for split-brain
-
 buggy election: split-brain found at seed=7
-  reproduce it:  seedloop.replay(election_scenario(buggy=True), seed=7)
   replay reproduces it: invariant 'at-most-one-leader-per-term' violated at t=0.229...
 correct election (single-vote rule enforced): no violation over the same 200 seeds
--> the violation is the toggled flaw, not the harness.
 ```
 
-The election logic is in [`src/seedloop/demos/raft.py`](src/seedloop/demos/raft.py). It is election only
-(terms, `RequestVote`, majority, heartbeats) — log replication, persistence, and membership changes are
-out of scope.
+Election only — log replication, persistence, and membership changes are out of scope. Code in
+[`src/seedloop/demos/raft.py`](src/seedloop/demos/raft.py).
 
 ## What it does
 
-- A **deterministic event loop** that makes `asyncio` task scheduling reproducible and drives the I/O
-  seam — where nondeterminism actually enters — from the seed.
-- A **virtual clock** — `sleep` and timeouts advance simulated time instantly; no run is slower for
-  testing a 10-second scenario.
-- **Seeded randomness** everywhere, so a run is a pure function of its seed.
-- A **simulated network** with seeded latency, reordering, message loss, and partitions.
-- **Fault injection** driven by the seed, so chaos is reproducible rather than random.
-- **Invariants** — `world.always(...)` checks a continuous safety property at every step.
-- A **non-determinism auditor** — `audit=True` turns any uncontrolled entropy source into a loud,
-  reproducible failure, so the determinism boundary is enforced, not just stated.
-- **Seed replay** — the whole point: any failure reduces to a single integer you can replay forever.
+- A deterministic event loop that makes `asyncio` scheduling reproducible.
+- A virtual clock — `sleep` and timeouts advance instantly.
+- Seeded randomness everywhere, so a run is a pure function of its seed.
+- A simulated network with seeded latency, reordering, loss, and partitions.
+- Fault injection driven by the seed, so chaos is reproducible.
+- `world.always(...)` — a continuous safety-invariant check.
+- A non-determinism auditor (`audit=True`) that turns any uncontrolled entropy source into a
+  reproducible failure.
 
-## Scope — what it tests, and what it deliberately does not
+## Scope
 
-The honesty in this section is the point. `seedloop` makes your async *logic* deterministic; it does
-not make your *infrastructure* deterministic, and it does not pretend to. The full boundary, and the engineering reasons behind it, are in
-[docs/scope.md](docs/scope.md). In short:
+`seedloop` makes async *logic* deterministic; it does not make *infrastructure* deterministic, and
+says so rather than pretending otherwise. Full boundary in [docs/scope.md](docs/scope.md).
 
-- **It is for** pure-Python async code that talks to an abstract transport: consensus (Raft/Paxos),
-  replication, gossip, CRDTs, custom wire protocols, schedulers, retry/backoff/circuit-breaker logic,
-  rate limiters — code where the *logic* holds the concurrency bugs.
-- **It is not for** I/O-heavy applications bound to real drivers. Real threads, `multiprocessing`,
-  `uvloop`, and C-extension drivers (`asyncpg`, `grpcio`) are explicitly out of scope, because their
-  scheduling cannot be controlled from Python — the same wall that stops deterministic testing in Go.
-  `seedloop` tests your algorithm, not your database driver.
+- **For:** pure-Python async code against an abstract transport — consensus, replication, gossip,
+  CRDTs, wire protocols, retry/backoff logic, rate limiters.
+- **Not for:** real threads, `multiprocessing`, `uvloop`, C-extension drivers (`asyncpg`, `grpcio`) —
+  their scheduling can't be controlled from Python, the same wall that blocks DST in Go.
 
-Choosing this boundary deliberately — rather than promising determinism it cannot deliver — is what
-keeps the guarantee real.
+## Design
+
+`seedloop` subclasses `asyncio.BaseEventLoop` and replaces only the I/O-poll seam
+(`_run_once`'s `select()`), rather than reimplementing scheduling from scratch: asyncio's own
+`call_soon` FIFO ready queue and Task/Future machinery are already deterministic, so the loop
+inherits them and only cuts the one seam that isn't (ADR-0013 in
+[docs/decisions.md](docs/decisions.md)). The rest of the design log — 22 decisions, each with
+what was considered and rejected — is there too.
 
 ## Status
 
-The planned build is **complete**. The deterministic core (custom event loop, virtual clock with
-autojump, seeded entropy, the `World` / `check` / `replay` API), the simulated network with fault
-injection (loss, duplication, partitions), the `world.always` invariant API, and the non-determinism
-auditor (`audit=True`) are all implemented and tested, alongside the worked Raft demo that runs today.
+`seedloop 0.4.0` is live on PyPI: the deterministic core, simulated network with fault injection,
+`world.always` invariants, the non-determinism auditor, `run_for`/`run_until`, seed-scheduled fault
+handles (`partition()`/`slow_link()`/`crash()`), the optional Hypothesis integration, and the Raft
+demo. 245 tests, 4 gates + a mutation-sweep gate, green on Linux/macOS/Windows × Python 3.12–3.14.
 
-Three further additions have since landed: seed-scheduled fault handles
-(`world.partition()`/`slow_link()`/`crash()` passed to `world.run_for`), the time-advancing
-`world.run_for`/`run_until` primitives, and an optional Hypothesis integration
-(`pip install seedloop[hypothesis]` for `seedloop.hypothesis`: seed and input generation with shrinking,
-over runs that stay deterministic). A replay-stability pin locks one canonical scenario's timeline in
-CI, so a change that would silently shift recorded seeds fails the build instead.
+One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
+`always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario
+coroutine returns and before teardown cancels it. Pre-existing since `v0.3.2`, not introduced by
+0.4.0. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md).
 
-The full API is in [docs/api.md](docs/api.md) and the phased build in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Why it exists
-
-There is no `pip`-installable deterministic simulation testing framework for Python `asyncio` — the
-capability lives in Rust (`madsim`, `turmoil`), C++ (FoundationDB), Java (OpenDST), and behind a
-commercial hypervisor (Antithesis), but not in Python. Meanwhile the discipline is rising fast among
-serious engineers (Antithesis raised a $105M round led by Jane Street to standardize DST; AWS has
-codified deterministic and formal methods as standing practice). As one of its proponents puts it:
-*writing code is no longer the bottleneck — making sure it does the right thing is.* `seedloop` is a
-tool for exactly that, in the language that lacked it.
+Full API in [docs/api.md](docs/api.md), phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
-
-The design is specified before the code:
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how `asyncio` is made deterministic, and the phased build.
 - [docs/api.md](docs/api.md) — the public API: `World`, `check`/`replay`, the transport, faults.
