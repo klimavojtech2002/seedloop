@@ -715,17 +715,25 @@ timed faults should compose without one's cleanup undoing another's still-active
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the
   runtime tripwires of ADR-0008. Deferred: tripwires carry the guarantee; a static layer is an
   ergonomics add to settle once Phase 3 is in use, not before.
-- **A `world.start()`-ed task can violate an `always()` invariant just after the scenario coroutine
-  returns, uncaught.** `World._drive` stops evaluating invariant hooks the moment the scenario itself
-  completes (documented on `always()`: "not during teardown"), so a started task's *ordinary*
-  execution — not a cancellation handler, just its normal next step — that has not yet run at that
-  instant can go on to violate an invariant during the window before teardown cancels it, and nothing
-  checks for it: the run reports a clean pass. Found by a holistic pre-0.4.0 release audit;
-  pre-existing (reproduces identically on `v0.3.2`), not introduced by any 0.4.0 slice. Deferred
-  rather than patched into 0.4.0 under release pressure: a correct fix needs its own design pass —
-  how many further steps (if any) should still be checked before teardown begins, and how that
-  interacts with the original reason invariants stop being checked at all (a node's own cancel
-  handler mutating state must not manufacture a false violation, ADR pending its own slice).
+- **A `world.start()`-ed task can violate an `always()` invariant in the exact scheduling step after
+  the scenario coroutine returns, uncaught.** `World._drive` stops evaluating invariant hooks the
+  moment the scenario itself completes (documented on `always()`: "not during teardown"). A started
+  task whose own next scheduled resumption is the one that would perform the violation races teardown's
+  cancellation and wins, because that resumption was already in flight (scheduled via `call_soon`, not
+  awaiting any cancellable future) the instant `task.cancel()` is issued. Measured precisely (audit
+  0025): this is a **one-scheduling-step-wide race**, not a broad window — a task whose violation is two
+  or more steps away is cleanly cancelled first (no violation occurs at all), and a task whose violation
+  is due this step or earlier is still caught by the active hooks. Only the exact one-step coincidence
+  slips through. Found by a holistic pre-0.4.0 release audit, then re-measured and narrowed by audit
+  0025 after the original repro turned out not to demonstrate a violation at all (`result.error is None`
+  was checked, not whether the invariant actually broke). Pre-existing (identical on `v0.3.2` across the
+  full boundary, not just the one case first found), not introduced by any 0.4.0 slice. Deferred rather
+  than patched under release pressure: a correct fix needs its own design pass — how many further steps
+  (if any) should still be checked before teardown begins, and how that interacts with the original
+  reason invariants stop being checked at all (a node's own cancel handler mutating state must not
+  manufacture a false violation, ADR pending its own slice). Worth taking seriously despite the narrow
+  window: across a `check(seeds=N)` sweep where a node's own timing depends on seeded network latency,
+  the step at which it would misbehave shifts by seed, so the one-step coincidence only has to land once.
 
 *Resolved since the first draft:* **naming** — `seedloop` is adopted as the name (free on PyPI at the
 time of writing; confirm at first release). **Reliable-channel fidelity** (ADR-0006 opt-in) — in-order,
