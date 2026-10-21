@@ -1,13 +1,14 @@
-# Equivalent mutants: each changes no observable behaviour, so no test can (or should) catch it.
-# The gate fails on any survivor NOT listed here — a new one means a real coverage gap, not a free
-# pass. Each line is `path:line mutation  # why it is equivalent`. Regenerate the bare list with
-# `python scripts/mutation_sweep.py --update`, then restore the reasons and review every change.
-src/seedloop/_loop.py:36 int 0->1  # timer tie-break counter start; only relative order matters
-src/seedloop/_loop.py:37 int 0->1  # task creation-index start; only relative order matters
-src/seedloop/_net.py:72 int 0->1  # fault-id counter start; only relative uniqueness matters
-src/seedloop/_net.py:251 cmp LessThan->LessThanEqual  # random() == 0.5 is measure-zero for floats
-src/seedloop/_net.py:284 bool And->Or  # type-narrowing assert; every branch above resolves both a and b, so it holds under either operator
-src/seedloop/_net.py:362 cmp LessThan->LessThanEqual  # random() == loss is measure-zero for floats
-src/seedloop/_net.py:366 cmp LessThan->LessThanEqual  # random() == duplicate is measure-zero
-src/seedloop/_run.py:27 bool True->False  # CheckResult frozen=False; immutability is never relied on
-src/seedloop/_world.py:294 int 1->0  # getattr default -1->0, unreachable: every task is stamped
+# Equivalent mutants: each changes no observable behaviour, so no test can (or should)
+# catch it. The gate fails on any survivor NOT listed here (a new one is a real coverage
+# gap, not a free pass), and on any entry that no longer exists or no longer survives.
+# Each line is `key  # why it is equivalent`; the key is
+# path::function#n description [hash of the original line].
+# Regenerate with `python scripts/mutation_sweep.py --update`, then write the reasons.
+src/seedloop/_loop.py::DeterministicLoop.__init__#0 int 0->1 [4eb7886b]  # timer tie-break counter start; only relative order matters
+src/seedloop/_loop.py::DeterministicLoop.__init__#1 int 0->1 [0f115fd1]  # task creation-index start; only relative order matters
+src/seedloop/_net.py::Transport._commit_slow_link_fault#10 bool And->Or [7aa815dc]  # type-narrowing assert; every branch above resolves both a and b, so it holds under either operator
+src/seedloop/_net.py::Transport._draw_bipartition#1 cmp LessThan->LessThanEqual [9be24f9d]  # random() == 0.5 is measure-zero for floats
+src/seedloop/_net.py::Transport._send#3 cmp LessThan->LessThanEqual [38f54dfb]  # random() == loss is measure-zero for floats
+src/seedloop/_net.py::Transport._send#6 cmp LessThan->LessThanEqual [ff7b265b]  # random() == duplicate is measure-zero
+src/seedloop/_run.py::CheckResult#0 bool True->False [fea97f29]  # CheckResult frozen=False; immutability is never relied on
+src/seedloop/_world.py::World._drive#6 int 1->0 [2ebbee77]  # getattr default -1->0, unreachable: every task is stamped
