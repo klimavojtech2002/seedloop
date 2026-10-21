@@ -110,7 +110,8 @@ what was considered and rejected — is there too.
 `seedloop 0.4.0` is live on PyPI: the deterministic core, simulated network with fault injection,
 `world.always` invariants, the non-determinism auditor, `run_for`/`run_until`, seed-scheduled fault
 handles (`partition()`/`slow_link()`/`crash()`), the optional Hypothesis integration, and the Raft
-demo. 245 tests, 4 gates + a mutation-sweep gate, green on Linux/macOS/Windows × Python 3.12–3.14.
+demo. The 4 gates (lint, format, types, tests) run green on Linux/macOS/Windows × Python
+3.12–3.14, and a mutation-sweep gate runs on Windows.
 
 One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
 `always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario

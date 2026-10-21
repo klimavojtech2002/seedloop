@@ -1,0 +1,358 @@
+# seedloop characterization corpus: name seed outcome digest
+faults_unpinned 0 ok 341aef9e1d4d
+faults_unpinned 1 ok 0c25419d1d62
+faults_unpinned 2 ok ec2116d6ad15
+faults_unpinned 3 ok 00aebe73698e
+faults_unpinned 4 ok 76ad1dee1ca3
+faults_unpinned 5 ok d78227cbae75
+faults_unpinned 6 ok 2ec5132cc8d0
+faults_unpinned 7 ok 6089bed4b530
+faults_unpinned 8 ok 4f81242714ad
+faults_unpinned 9 ok 75b6e42f1eae
+faults_unpinned 10 ok 19cba07349ec
+faults_unpinned 11 ok 64ae030d031b
+faults_pinned 0 ok b472244c4a24
+faults_pinned 1 ok 2acf9d8a2dd6
+faults_pinned 2 ok 23cfaa25d6c9
+faults_pinned 3 ok 037af9de76ce
+faults_pinned 4 ok 9d0c83a923df
+faults_pinned 5 ok f07dd7dde52a
+faults_pinned 6 ok dcc4838ebc04
+faults_pinned 7 ok adc2a296bf42
+faults_pinned 8 ok 17dac4503b04
+faults_pinned 9 ok 1c4c9175bc5b
+faults_pinned 10 ok 23da273afe83
+faults_pinned 11 ok 901d1b161e69
+reliable_with_faults 0 ok bde3acb4f1e6
+reliable_with_faults 1 ok 32aa7aed9710
+reliable_with_faults 2 ok 142988fab133
+reliable_with_faults 3 ok d9a94cd51a9e
+reliable_with_faults 4 ok fb9866ab9c5a
+reliable_with_faults 5 ok c1e703912518
+reliable_with_faults 6 ok 0a4908819a10
+reliable_with_faults 7 ok cf6e8a4dd846
+reliable_with_faults 8 ok 47e6a2a88e72
+reliable_with_faults 9 ok 7692656194fc
+reliable_with_faults 10 ok 411870f65769
+reliable_with_faults 11 ok 976881855149
+run_until_tie 0 ok 5675a6723c87
+run_until_tie 1 ok 5675a6723c87
+run_until_tie 2 ok 5675a6723c87
+run_until_deadline_edge 0 ok cd160f1f2ace
+run_until_deadline_edge 1 ok cd160f1f2ace
+run_until_deadline_edge 2 ok cd160f1f2ace
+nodes_record_on_cancel 0 ok d65565aa9cf5
+nodes_record_on_cancel 1 ok d65565aa9cf5
+nodes_record_on_cancel 2 ok d65565aa9cf5
+cancel_handler_sleeps 0 ok 00b6ff7a4c60
+cancel_handler_sleeps 1 ok 00b6ff7a4c60
+cancel_handler_sleeps 2 ok 00b6ff7a4c60
+teardown_deadlock 0 DeadlockError 292e1a228da3
+teardown_deadlock 1 DeadlockError 292e1a228da3
+teardown_deadlock 2 DeadlockError 292e1a228da3
+spawn_then_return 0 ok 32c059b059ef
+spawn_then_return 1 ok 32c059b059ef
+spawn_then_return 2 ok 32c059b059ef
+spawn_chain 0 ok 9978a0610f8b
+spawn_chain 1 ok 9978a0610f8b
+spawn_chain 2 ok 9978a0610f8b
+cancel_handler_spawns 0 ok f4838527c508
+cancel_handler_spawns 1 ok f4838527c508
+cancel_handler_spawns 2 ok f4838527c508
+pending_callbacks_at_return 0 ok c8e0ab7b4a4f
+pending_callbacks_at_return 1 ok c8e0ab7b4a4f
+pending_callbacks_at_return 2 ok c8e0ab7b4a4f
+busy_node_ticks 0 ok 4f52d8df8281
+busy_node_ticks 1 ok 4f52d8df8281
+busy_node_ticks 2 ok 4f52d8df8281
+node_raises_after_1 0 ValueError bba6b03e8f86
+node_raises_after_1 1 ValueError bba6b03e8f86
+node_raises_after_2 0 ValueError bba6b03e8f86
+node_raises_after_2 1 ValueError bba6b03e8f86
+node_raises_after_3 0 ok 92a949fd4184
+node_raises_after_3 1 ok 92a949fd4184
+node_raises_after_4 0 ok 92a949fd4184
+node_raises_after_4 1 ok 92a949fd4184
+node_raises_after_5 0 ok 92a949fd4184
+node_raises_after_5 1 ok 92a949fd4184
+shield_at_end 0 ok 3ca33cfdb6b6
+shield_at_end 1 ok 3ca33cfdb6b6
+shield_at_end 2 ok 3ca33cfdb6b6
+invariant_fails 0 InvariantError 8a3bb6bd600e
+invariant_fails 1 InvariantError 7e59cbe55fbe
+invariant_fails 2 InvariantError 2d73cad7e10d
+invariant_fails 3 InvariantError 63295284e717
+invariant_fails 4 InvariantError cf20b2d71a73
+invariant_fails 5 InvariantError e343ca7c769e
+invariant_fails 6 InvariantError 09f1cfbba7f6
+invariant_fails 7 InvariantError 2000a4c35ec6
+invariant_fails 8 InvariantError f9a4ad87b9e5
+invariant_fails 9 InvariantError 88121cf62105
+invariant_fails 10 InvariantError f206f75f6ef3
+invariant_fails 11 InvariantError 6b49aa3f1478
+wait_for_burst 0 ok 19eda5baf156
+wait_for_burst 1 ok 1d170137fac8
+wait_for_burst 2 ok cab7fb3edbe0
+wait_for_burst 3 ok 9bf8956f4c63
+wait_for_burst 4 ok aff6df9a2a17
+wait_for_burst 5 ok 4774e9040de3
+wait_for_burst 6 ok 1e65f9740f91
+wait_for_burst 7 ok 2a36aa4f77f5
+wait_for_burst 8 ok 4c09e365eb85
+wait_for_burst 9 ok 9d857165ffea
+wait_for_burst 10 ok 7f123b413a7e
+wait_for_burst 11 ok d3b76a33163f
+csprng_values 0 ok 49f579cdaa64
+csprng_values 1 ok 88bb3c5965c1
+csprng_values 2 ok 8e84113d6b86
+csprng_values 3 ok 6d3e665b7dc3
+csprng_values 4 ok 22affcfdc756
+csprng_values 5 ok 46df6476bfeb
+csprng_values 6 ok a63de05c84ae
+csprng_values 7 ok 26a3ca78afe0
+csprng_values 8 ok a8026651b3b4
+csprng_values 9 ok d0f930b6b5cc
+csprng_values 10 ok 86a1b9730b20
+csprng_values 11 ok 98ae2febe4f1
+net_basic 0 ok 7e9429eed85e
+net_basic 1 ok c013c6af2e51
+net_basic 2 ok a09e5c046605
+net_basic 3 ok 5ea4feaffffa
+net_basic 4 ok 026681d0a52d
+net_basic 5 ok 6ec39f7ce393
+net_basic 6 ok 3ad3be63d1b7
+net_basic 7 ok cb462ebc48e6
+net_basic 8 ok a9e19883dd65
+net_basic 9 ok 4b832c81141f
+net_basic 10 ok 865c4e35d15e
+net_basic 11 ok 0c93489d8d69
+net_basic_audited 0 ok 7e9429eed85e
+net_basic_audited 1 ok c013c6af2e51
+net_basic_audited 2 ok a09e5c046605
+net_basic_audited 3 ok 5ea4feaffffa
+net_basic_audited 4 ok 026681d0a52d
+net_basic_audited 5 ok 6ec39f7ce393
+net_basic_audited 6 ok 3ad3be63d1b7
+net_basic_audited 7 ok cb462ebc48e6
+net_basic_audited 8 ok a9e19883dd65
+net_basic_audited 9 ok 4b832c81141f
+net_basic_audited 10 ok 865c4e35d15e
+net_basic_audited 11 ok 0c93489d8d69
+two_nodes_fail 0 LookupError 5feb8d29bd3a
+two_nodes_fail 1 LookupError 5feb8d29bd3a
+two_nodes_fail 2 LookupError 5feb8d29bd3a
+taskgroup_one_child_timeout 0 ok f4081d5f70f1
+taskgroup_one_child_timeout 1 ok f4081d5f70f1
+taskgroup_one_child_timeout 2 ok f4081d5f70f1
+raft_buggy 0 ok 51285ddbd579
+raft_buggy 1 ok e610d803a5ad
+raft_buggy 2 ok e0d68fe6f2c0
+raft_buggy 3 ok 969ba22f8c78
+raft_buggy 4 ok 54d3928c603d
+raft_buggy 5 ok f637d4358c40
+raft_buggy 6 ok 1244dc4283d2
+raft_buggy 7 InvariantError 98b7cb442d95
+raft_buggy 8 ok c58a62a66540
+raft_buggy 9 ok 7b1d22f882b2
+raft_buggy 10 ok 37c09953e9dd
+raft_buggy 11 ok 6b8edca4255a
+raft_buggy 12 ok 92a9526a9d6c
+raft_buggy 13 InvariantError 5c19093d1618
+raft_buggy 14 ok 1c86ce35e6b0
+raft_buggy 15 ok 57f5cb75ba0a
+raft_buggy 16 InvariantError 94269837acc5
+raft_buggy 17 ok e1e6063b309c
+raft_buggy 18 ok a520d4251839
+raft_buggy 19 ok 8135aa3bd34e
+raft_correct 0 ok 79047fd68310
+raft_correct 1 ok e610d803a5ad
+raft_correct 2 ok e0d68fe6f2c0
+raft_correct 3 ok 969ba22f8c78
+raft_correct 4 ok 54d3928c603d
+raft_correct 5 ok f637d4358c40
+raft_correct 6 ok 1244dc4283d2
+raft_correct 7 ok 21ffe71533a5
+raft_correct 8 ok c58a62a66540
+raft_correct 9 ok 7b1d22f882b2
+raft_correct 10 ok 37c09953e9dd
+raft_correct 11 ok 6b8edca4255a
+raft_correct 12 ok 92a9526a9d6c
+raft_correct 13 ok 3d199920b54a
+raft_correct 14 ok 1c86ce35e6b0
+raft_correct 15 ok 57f5cb75ba0a
+raft_correct 16 ok 7d87f211ab08
+raft_correct 17 ok e1e6063b309c
+raft_correct 18 ok a520d4251839
+raft_correct 19 ok 8135aa3bd34e
+== faults_pinned seed=0 outcome=ok
+(0.0, 'fault-partition-scheduled', 0, ((0, 1), (2, 3)), 1.0982301578941902, 2.3663503904204326)
+(0.0, 'fault-crash-scheduled', 1, 2, 0.5)
+(0.0, 'fault-slow-link-scheduled', 2, 1, 2, 4.0, 0.023622047752169695, 1.4325466333143866)
+(0.0, 'send', 0, 0, 1)
+(0.0, 'send', 1, 2, 3)
+(0.0, 'send', 2, 3, 2)
+(0.011499246100513724, 'deliver', 0, 0, 1)
+(0.013280811906622569, 'deliver', 1, 2, 3)
+(0.016043313213899492, 'deliver', 2, 3, 2)
+(0.023622047752169695, 'fault-slow-link-begin', 2)
+(0.05, 'send', 3, 0, 1)
+(0.05, 'send', 4, 2, 3)
+(0.05, 'send', 5, 3, 2)
+(0.054119176647304874, 'deliver', 5, 3, 2)
+(0.05947309317570351, 'deliver', 3, 0, 1)
+(0.06816546410196012, 'deliver', 4, 2, 3)
+(0.1, 'send', 6, 0, 1)
+(0.1, 'send', 7, 2, 3)
+(0.1, 'send', 8, 3, 2)
+(0.10161756471966026, 'deliver', 7, 2, 3)
+(0.11316190579574693, 'deliver', 6, 0, 1)
+(0.11978281324611292, 'deliver', 8, 3, 2)
+(0.15000000000000002, 'send', 9, 0, 1)
+(0.15000000000000002, 'send', 10, 2, 3)
+(0.15000000000000002, 'send', 11, 3, 2)
+(0.15857201719972738, 'deliver', 9, 0, 1)
+(0.16066089884111268, 'deliver', 10, 2, 3)
+(0.16496355792114634, 'deliver', 11, 3, 2)
+(0.2, 'send', 12, 0, 1)
+(0.2, 'send', 13, 2, 3)
+(0.2, 'send', 14, 3, 2)
+(0.2016085642200834, 'deliver', 13, 2, 3)
+(0.20366316113012953, 'deliver', 14, 3, 2)
+(0.21501459945157875, 'deliver', 12, 0, 1)
+(0.25, 'send', 15, 0, 1)
+(0.25, 'send', 16, 2, 3)
+(0.25, 'send', 17, 3, 2)
+(0.25117868783260994, 'deliver', 17, 3, 2)
+(0.2517806547359608, 'deliver', 15, 0, 1)
+(0.2625885937149182, 'deliver', 16, 2, 3)
+(0.3, 'send', 18, 0, 1)
+(0.3, 'send', 19, 2, 3)
+(0.3, 'send', 20, 3, 2)
+(0.30244260976010684, 'deliver', 18, 0, 1)
+(0.30369402839436366, 'deliver', 20, 3, 2)
+(0.3179596779002344, 'deliver', 19, 2, 3)
+(0.35, 'send', 21, 0, 1)
+(0.35, 'send', 22, 2, 3)
+(0.35, 'send', 23, 3, 2)
+(0.3532656762701128, 'deliver', 21, 0, 1)
+(0.3632906919150909, 'deliver', 22, 2, 3)
+(0.364576083220887, 'deliver', 23, 3, 2)
+(0.39999999999999997, 'send', 24, 0, 1)
+(0.39999999999999997, 'send', 25, 2, 3)
+(0.39999999999999997, 'send', 26, 3, 2)
+(0.4019239303795465, 'deliver', 26, 3, 2)
+(0.403527098653511, 'deliver', 24, 0, 1)
+(0.4114854200319844, 'deliver', 25, 2, 3)
+(0.44999999999999996, 'send', 27, 0, 1)
+(0.44999999999999996, 'send', 28, 2, 3)
+(0.44999999999999996, 'send', 29, 3, 2)
+(0.45342122575894106, 'deliver', 28, 2, 3)
+(0.46388269070194754, 'deliver', 29, 3, 2)
+(0.4697738397320555, 'deliver', 27, 0, 1)
+(0.49999999999999994, 'send', 30, 0, 1)
+(0.49999999999999994, 'send', 31, 2, 3)
+(0.49999999999999994, 'send', 32, 3, 2)
+(0.5, 'fault-crash', 1, 2)
+(0.5015245104334465, 'drop-crashed', 32, 3, 2)
+(0.5163921102517379, 'drop-crashed', 31, 2, 3)
+(0.5192093257364923, 'deliver', 30, 0, 1)
+(0.5499999999999999, 'send', 33, 0, 1)
+(0.5499999999999999, 'send', 34, 2, 3)
+(0.5499999999999999, 'send', 35, 3, 2)
+(0.5656679313049706, 'deliver', 33, 0, 1)
+(0.5671187983870295, 'drop-crashed', 35, 3, 2)
+(0.5689562882881711, 'drop-crashed', 34, 2, 3)
+(0.6, 'send', 36, 0, 1)
+(0.6, 'send', 37, 2, 3)
+(0.6, 'send', 38, 3, 2)
+(0.6047454148972755, 'deliver', 36, 0, 1)
+(0.6091872752028238, 'drop-crashed', 37, 2, 3)
+(0.6194007918454669, 'drop-crashed', 38, 3, 2)
+(0.65, 'send', 39, 0, 1)
+(0.65, 'send', 40, 2, 3)
+(0.65, 'send', 41, 3, 2)
+(0.6526947583020442, 'deliver', 39, 0, 1)
+(0.6614823358993283, 'drop-crashed', 41, 3, 2)
+(0.665789282841881, 'drop-crashed', 40, 2, 3)
+(0.7000000000000001, 'send', 42, 0, 1)
+(0.7000000000000001, 'send', 43, 2, 3)
+(0.7000000000000001, 'send', 44, 3, 2)
+(0.7024286683562551, 'drop-crashed', 43, 2, 3)
+(0.7092287217092561, 'deliver', 42, 0, 1)
+(0.7127333504602203, 'drop-crashed', 44, 3, 2)
+(0.7500000000000001, 'send', 45, 0, 1)
+(0.7500000000000001, 'send', 46, 2, 3)
+(0.7500000000000001, 'send', 47, 3, 2)
+(0.7574506774022971, 'drop-crashed', 46, 2, 3)
+(0.7641387651422985, 'drop-crashed', 47, 3, 2)
+(0.7647025472024773, 'deliver', 45, 0, 1)
+(0.8000000000000002, 'send', 48, 0, 1)
+(0.8000000000000002, 'send', 49, 2, 3)
+(0.8000000000000002, 'send', 50, 3, 2)
+(0.8068743416996959, 'deliver', 48, 0, 1)
+(0.8161985332086319, 'drop-crashed', 49, 2, 3)
+(0.8165628627612435, 'drop-crashed', 50, 3, 2)
+(0.8500000000000002, 'send', 51, 0, 1)
+(0.8500000000000002, 'send', 52, 2, 3)
+(0.8500000000000002, 'send', 53, 3, 2)
+(0.8610576533413907, 'drop-crashed', 52, 2, 3)
+(0.8692340336745875, 'deliver', 51, 0, 1)
+(0.8696988441021816, 'drop-crashed', 53, 3, 2)
+(0.9000000000000002, 'send', 54, 0, 1)
+(0.9000000000000002, 'send', 55, 2, 3)
+(0.9000000000000002, 'send', 56, 3, 2)
+(0.9041486710076934, 'deliver', 54, 0, 1)
+(0.9134388131346028, 'drop-crashed', 55, 2, 3)
+(0.9152726631885868, 'drop-crashed', 56, 3, 2)
+(0.9500000000000003, 'send', 57, 0, 1)
+(0.9500000000000003, 'send', 58, 2, 3)
+(0.9500000000000003, 'send', 59, 3, 2)
+(0.9543438380753705, 'drop-crashed', 58, 2, 3)
+(0.9581973351690886, 'drop-crashed', 59, 3, 2)
+(0.9671740156274247, 'deliver', 57, 0, 1)
+(1.0000000000000002, 'send', 60, 0, 1)
+(1.0000000000000002, 'send', 61, 2, 3)
+(1.0000000000000002, 'send', 62, 3, 2)
+(1.0038222846158986, 'drop-crashed', 62, 3, 2)
+(1.01381638277922, 'drop-crashed', 61, 2, 3)
+(1.0161510038167247, 'deliver', 60, 0, 1)
+(1.0500000000000003, 'send', 63, 0, 1)
+(1.0500000000000003, 'send', 64, 2, 3)
+(1.0500000000000003, 'send', 65, 3, 2)
+(1.0592838304568784, 'drop-crashed', 65, 3, 2)
+(1.0676894257519107, 'drop-crashed', 64, 2, 3)
+(1.0690309085551208, 'deliver', 63, 0, 1)
+(1.0982301578941902, 'fault-partition-begin', 0)
+(1.1000000000000003, 'send', 66, 0, 1)
+(1.1000000000000003, 'send', 67, 2, 3)
+(1.1000000000000003, 'send', 68, 3, 2)
+(1.103306111983739, 'drop-crashed', 67, 2, 3)
+(1.1113808973749812, 'deliver', 66, 0, 1)
+(1.1128331357364196, 'drop-crashed', 68, 3, 2)
+(1.1500000000000004, 'send', 69, 0, 1)
+(1.1500000000000004, 'send', 70, 2, 3)
+(1.1500000000000004, 'send', 71, 3, 2)
+(1.1528226968649307, 'deliver', 69, 0, 1)
+(1.1587161504260217, 'drop-crashed', 70, 2, 3)
+(1.1667539533499882, 'drop-crashed', 71, 3, 2)
+(1.2000000000000004, 'send', 72, 0, 1)
+(1.2000000000000004, 'send', 73, 2, 3)
+(1.2000000000000004, 'send', 74, 3, 2)
+(1.2072268782910172, 'drop-crashed', 74, 3, 2)
+(1.2096998526100275, 'deliver', 72, 0, 1)
+(1.2104319831192707, 'drop-crashed', 73, 2, 3)
+(1.4325466333143866, 'fault-slow-link-end', 2)
+(2.3663503904204326, 'fault-partition-heal', 0)
+== cancel_handler_sleeps seed=0 outcome=ok
+(1.2, ('bounded-cleanup', 1.2))
+(1.5, ('slow-cleanup', 1.5))
+== spawn_then_return seed=0 outcome=ok
+(0.0, 'child-ran')
+== spawn_chain seed=0 outcome=ok
+(0.0, ('link', 0))
+(0.0, ('link', 1))
+== pending_callbacks_at_return seed=0 outcome=ok
+(0.0, 'other')
+(0.0, 'soon-chain')
+== busy_node_ticks seed=0 outcome=ok
+(0.0, ('ticks', 5))

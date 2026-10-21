@@ -13,6 +13,11 @@ concurrency:
 jobs:
   gates:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      # The corpus and golden pins are exact; pin the one process-level source of variation that
+      # library code does not control for the user.
+      PYTHONHASHSEED: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -41,8 +46,14 @@ jobs:
     # Prove the tests catch broken behaviour, not just that they are green: mutate the library and
     # fail on any survivor not in the reviewed equivalent-mutant baseline. The survivor set is stable
     # per platform, but OS-branching code (the hash-seed launcher) is exercised differently per OS, so
-    # the gate runs on the platform the baseline was generated and reviewed on (see ADR-0019).
+    # the gate runs on the platform the baseline was generated and reviewed on (see ADR-0019). The
+    # mutant list is split into shards to keep each job short; raise the shard count when it grows.
     runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -52,6 +63,50 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev,mutation]"
       - name: Types (harness)
-        run: mypy scripts/mutation_sweep.py scripts/release_guard.py scripts/pin_replay.py
-      - name: Mutation gate
-        run: python scripts/mutation_sweep.py
+        run: mypy scripts/mutation_sweep.py scripts/release_guard.py scripts/pin_replay.py scripts/pin_corpus.py scripts/proctree.py
+      - name: Mutation gate (shard ${{ matrix.shard }} of 4)
+        run: python scripts/mutation_sweep.py --shard ${{ matrix.shard }}/4
+
+  meta:
+    # Checks the checks: each named change to a copy of the library must fail the corpus, and the
+    # mutation harness is exercised on a toy project. Slow, so it has its own job and is not part of
+    # the suite the mutation gate runs against every mutant. It runs on Windows too, because that is
+    # where the mutation gate runs.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev,mutation]"
+      - name: Meta tests
+        run: pytest -q -m meta
+
+  differential:
+    # Generated programs must behave exactly like the previously released wheel (needs the network
+    # to fetch it). A difference is a behavioural change and must be declared in the test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONHASHSEED: "0"
+      SEEDLOOP_DIFF_PROGRAMS: "200"
+      SEEDLOOP_DIFF_REQUIRED: "1"  # an unavailable oracle fails the job instead of skipping
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Differential test against the previous release
+        run: pytest -q -m differential
