@@ -1159,3 +1159,28 @@ def test_check_returns_a_failure_that_takes_no_notes() -> None:
     result = seedloop.check(scenario, seeds=2, on_failure="return")
     assert isinstance(result.error, NoNotes)
     assert result.failing_seed == 0
+
+
+def test_a_check_added_while_settling_is_noted_once() -> None:
+    class Slow:
+        async def run(self) -> None:
+            try:
+                await asyncio.sleep(100)
+            except asyncio.CancelledError:
+                await asyncio.sleep(1)
+                raise
+
+    async def scenario(world: World) -> None:
+        world.start(Slow())
+        asyncio.get_running_loop().stop()  # the run ends before the scenario finishes
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            world.always(lambda: False, name="late")
+            await asyncio.sleep(1)
+            raise
+
+    with pytest.raises(RuntimeError) as caught:
+        _run_one(scenario, 0)
+    notes = [n for n in getattr(caught.value, "__notes__", []) if "late" in n]
+    assert len(notes) == 1, notes

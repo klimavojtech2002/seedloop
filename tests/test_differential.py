@@ -65,7 +65,16 @@ def _first_failure_kept(program: int, old: str, new: str) -> bool:
     # other steps), so it is not compared. Both builds must still fail, with different errors.
     kept = {"loop_stop", "invariant_steps"} & kinds(generate(program))
     heads = {old.split()[0], new.split()[0]}
-    return bool(kept) and "ok" not in heads and "InvalidStateError" not in heads and len(heads) == 2
+    # Only the errors a generated program can raise on purpose: an unrelated type (a TypeError, an
+    # AttributeError) is a regression, never an intended difference.
+    failed = heads <= {"InvariantError", "RuntimeError", "ValueError", "DeadlockError"}
+    # The same type is accepted only for a stop, which both builds report; what differs is the
+    # teardown that 0.4.0 used to cut short.
+    return (
+        bool(kept)
+        and failed
+        and (len(heads) == 2 or (heads == {"RuntimeError"} and "loop_stop" in kept))
+    )
 
 
 # Differences that are intended: a reason, and a test on the (oracle, candidate) result lines.

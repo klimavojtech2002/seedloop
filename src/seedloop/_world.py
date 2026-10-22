@@ -291,6 +291,8 @@ class World:
             raise
         finally:
             try:
+                if failure is not None:  # a check added while settling must not fire again here
+                    loop._sl_after_step_hooks.clear()
                 with _secondary(failure):
                     pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
                     pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
