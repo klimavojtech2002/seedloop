@@ -42,6 +42,7 @@ KINDS = (
     "cleanup_node",
     "invariant",
     "invariant",
+    "invariant_steps",
     "done_cb",
     "main_done_cb",
     "loop_stop",
@@ -66,6 +67,15 @@ class Op:
 
 def generate(seed: int) -> tuple[Op, ...]:
     return _gen(random.Random(seed), 0)
+
+
+def kinds(program: tuple[Op, ...]) -> set[str]:
+    """Every operation kind used in ``program``, including nested ones."""
+    found: set[str] = set()
+    for op in program:
+        found.add(op.kind)
+        found |= kinds(op.sub)
+    return found
 
 
 def _gen(rng: random.Random, depth: int) -> tuple[Op, ...]:
@@ -160,6 +170,8 @@ async def _step(
         w.start(_CleanupNode(w, tag, i, a % 3, d))
     elif kind == "invariant":
         _add_invariant(ctx, tasks, tag, i, d, r)
+    elif kind == "invariant_steps":
+        _add_step_invariant(ctx, tasks, tag, i, a % 4)
     elif kind == "done_cb" and tasks:
         tasks[a % len(tasks)].add_done_callback(lambda _t: w.record((tag, i, "done-callback")))
     elif kind == "main_done_cb":
@@ -240,6 +252,22 @@ def _add_invariant(
 
     if r < 0.4:
         _hold(ctx, tasks, asyncio.ensure_future(flip()))
+
+
+def _add_step_invariant(
+    ctx: Ctx, tasks: list[asyncio.Future[object]], tag: str, i: int, steps: int
+) -> None:
+    # An invariant that breaks a few loop steps from now, not a few virtual seconds: it can land in
+    # the steps right after the scenario returns, where a check ends the run mid-wind-down.
+    state = {"bad": False}
+    ctx.world.always(lambda: not state["bad"], name=f"inv-steps{tag}{i}")
+
+    async def flip() -> None:
+        for _ in range(steps):
+            await asyncio.sleep(0)
+        state["bad"] = True
+
+    _hold(ctx, tasks, asyncio.ensure_future(flip()))
 
 
 async def _consume_generator(w: World, tag: str, i: int, count: int, *, stop_early: bool) -> None:

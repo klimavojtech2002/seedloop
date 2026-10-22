@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `check` and `replay` called from inside a running event loop used to spin forever; they now raise
+  an error before running anything, and it is not reported as a failing seed.
+- A `KeyboardInterrupt` or `SystemExit` raised while a run winds down is no longer swallowed, and a
+  later error no longer replaces the failure already in flight: it is attached to it as a note.
+- The loop is closed on every path, including a scenario that raises before its first step.
+- `loop.call_later(nan, ...)` raises `ValueError` instead of never firing.
+- A check that fails, or an interrupt raised, in the last steps after the scenario returns is no
+  longer swallowed.
+- A run that ended with a pending task reported `InvalidStateError` instead of its real outcome.
+
 ## [0.4.0] — 2026-08-09
 
 ### Added

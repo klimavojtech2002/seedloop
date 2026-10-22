@@ -175,9 +175,7 @@ REVERSE_CANCEL_ORDER = Change(
 # more step after the scenario task is done, so tasks spawned in the last step still progress.
 DROPPED_SETTLE_STEP = Change(
     "the extra settle step after the scenario is dropped",
-    "_world.py",
-    "                with contextlib.suppress(BaseException):\n"
-    "                    self._loop.run_until_complete(main_task)\n"
-    "            # The scenario finished without raising",
-    "                pass\n            # The scenario finished without raising",
+    "_loop.py",
+    "                if watch.done():\n                    self._sl_stop_in = 2",
+    "                if watch.done():\n                    self._sl_stop_in = 1",
 )

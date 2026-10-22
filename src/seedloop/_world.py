@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
-from collections.abc import Awaitable, Callable, Collection, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterator, Sequence
 from typing import Protocol, runtime_checkable
 
 from seedloop._entropy import substream
@@ -22,7 +22,11 @@ from seedloop._faults import CrashFault, Fault, PartitionFault, SlowLinkFault
 from seedloop._loop import DeterministicLoop
 from seedloop._net import Address, Transport
 from seedloop._trace import Timeline
-from seedloop.errors import InvariantError, SeedloopError
+from seedloop.errors import InvariantError, SeedloopError, _UsageError
+
+_RUNNING_LOOP_MESSAGE = (
+    "check/replay cannot run inside a running event loop; call it from synchronous code"
+)
 
 
 @runtime_checkable
@@ -231,83 +235,106 @@ class World:
         """The recorded timeline so far (a read-only snapshot)."""
         return tuple(self._timeline.events)
 
+    def _close(self) -> None:
+        if not self._loop.is_closed():
+            self._loop.close()
+
     def _drive(self, main: Awaitable[None]) -> None:
         """Run the scenario to completion, surface any started-node failure, then close the loop."""
-        main_task = self._loop.create_task(main)
+        loop = self._loop
+        if asyncio.events._get_running_loop() is not None:
+            close = getattr(main, "close", None)
+            if close is not None:
+                close()  # never started: do not leave a "coroutine was never awaited" warning
+            raise _UsageError(_RUNNING_LOOP_MESSAGE)
+        main_task = loop.create_task(main)
+        failure: BaseException | None = None
         try:
             try:
-                self._loop.run_until_complete(main_task)
-            finally:
-                # Invariants describe the logical run, not cancellation cleanup — clear them
-                # before driving the loop any further (including settling main_task below), the
-                # same way teardown already did for its own cancellation gather. Without this, a
-                # node advancing during the settle steps below can flip an invariant false, and
-                # the settle loop's own exception handling (needed for the reason in the next
-                # comment) would silently discard it — a real regression an independent audit
-                # caught in an earlier version of this fix, worse than the bug it replaced: a
-                # violated invariant would report as a clean, passing run.
-                self._loop._sl_after_step_hooks.clear()
-                # main_task can settle (with an exception unrelated to the one that just
-                # propagated) on a LATER _run_once step than the hard hook that ended the call
-                # above: a run_until predicate's exception (ADR-0021) is delivered by resolving
-                # main_task's own suspended await through a callback scheduled one step after the
-                # after-step hook loop runs. asyncio.run_until_complete registers its own internal
-                # completion callback on main_task every time it is called on it; that callback is
-                # scheduled (via call_soon) the moment main_task settles, and if main_task settles
-                # after THIS call has already exited, the callback is left sitting, unprocessed, in
-                # the loop's ready queue. Left there, it fires during the teardown
-                # run_until_complete below and calls loop.stop() for THIS call's target instead of
-                # teardown's, ending it before its own future (the cancellation gather) is done —
-                # surfacing as a RuntimeError masking the real failure raised above.
-                #
-                # Cancel main_task if it is not already done, and drive it to completion in its
-                # own isolated cycle so any such callback fires and is consumed here. Then run
-                # run_until_complete on it once more regardless — main_task is now guaranteed
-                # already done, so this cannot raise the teardown's RuntimeError itself, and it
-                # flushes any completion callback still scheduled from an earlier cycle (the exact
-                # case above) before teardown ever starts.
+                # Invariants describe the logical run, not cancellation cleanup: they are cleared
+                # between the two settle steps (see run_until_done).
+                loop.run_until_done(main_task, settle=loop._sl_after_step_hooks.clear)
                 if not main_task.done():
+                    raise RuntimeError("Event loop stopped before Future completed.")
+            except BaseException as exc:
+                failure = exc  # a hook (invariant) or machinery error ended the run mid-scenario
+                raise
+            finally:
+                if failure is not None:  # otherwise run_until_done cleared them between its steps
+                    loop._sl_after_step_hooks.clear()
+                if not main_task.done():
+                    # Settle the scenario task on its own first, so its cancel handler runs before
+                    # any other task is cancelled. An error here must not replace the failure
+                    # already in flight.
                     main_task.cancel()
-                while not main_task.done():
-                    with contextlib.suppress(BaseException):
-                        self._loop.run_until_complete(main_task)
-                # main_task is now guaranteed already done, so this cannot raise the RuntimeError
-                # described above; it only flushes a completion callback left over from an earlier
-                # cycle (the exact case this whole block exists to handle).
-                with contextlib.suppress(BaseException):
-                    self._loop.run_until_complete(main_task)
-            # The scenario finished without raising; surface the first started node that failed
-            # (a crashed node would otherwise be an orphaned task, only logged).
+                    with _secondary(failure):
+                        while not main_task.done():  # a user loop.stop() ends one pass, not the run
+                            loop.run_until_done(main_task)
+                    if failure is not None and main_task.done() and not main_task.cancelled():
+                        unwind_error = main_task.exception()
+                        if unwind_error is not None and unwind_error is not failure:
+                            _note(failure, _describe(unwind_error))
+                elif failure is not None:
+                    # A check ended the run in a stop step, after the scenario was done: the hooks
+                    # are cleared above and one more step runs, so ready work still progresses.
+                    with _secondary(failure):
+                        loop.run_one_more_step(main_task)
+            main_task.result()  # the scenario's own outcome (raises it)
             for task in self._started:
-                exc = task.exception() if task.done() and not task.cancelled() else None
-                if exc is not None:
-                    raise exc
+                node_error = task.exception() if task.done() and not task.cancelled() else None
+                if node_error is not None:
+                    raise node_error
+        except BaseException as exc:
+            if failure is not None and exc is not failure:
+                _note(exc, _describe(failure))  # an interrupt ended the run: keep what it replaced
+            failure = exc  # teardown notes go on what actually propagates, an interrupt included
+            raise
         finally:
-            # Hooks are already cleared (above, before main_task was settled).
-            # Cancel every task still pending — started nodes and any the scenario spawned — and let
-            # the cancellations process, so the loop closes without "Task was destroyed but it is
-            # pending" warnings (a node loop that never returns, or a recv stuck under a fault).
-            # all_tasks() is a set in id()-hash order (varies per process); sort by the loop's
-            # creation index so cancellation — which a node can observe in its cancel handler — runs
-            # in a deterministic, seed-independent order and the timeline stays reproducible.
-            pending = [t for t in asyncio.all_tasks(self._loop) if not t.done()]
-            pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
-            for task in pending:
-                task.cancel()
-            if pending:
-                self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            # Every started task is done now (finished, failed, or just cancelled above), and so is
-            # main_task (settled above). Retrieve the failures the run did not surface — a node
-            # that crashed while the scenario itself raised, a second crashed node behind the one
-            # re-raised above, or main_task settling with a different exception than the one that
-            # actually propagated (e.g. run_until's own predicate exception, superseded by a
-            # same-step invariant, ADR-0021). Their exceptions were never read, so at garbage
-            # collection asyncio would log "Task exception was never retrieved" into an otherwise
-            # clean run. Reading them changes no outcome (the run's failure is already in flight);
-            # cancelled tasks are skipped because exception() would raise their CancelledError.
-            if not main_task.cancelled():
-                main_task.exception()
-            for task in self._started:
-                if not task.cancelled():
-                    task.exception()
-            self._loop.close()
+            try:
+                with _secondary(failure):
+                    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+                    pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except BaseException as interrupt:
+                if failure is not None and interrupt is not failure:
+                    _note(interrupt, _describe(failure))  # keep the failure the interrupt replaced
+                raise
+            finally:
+                # Read the failures the run did not surface, so asyncio does not log "Task exception
+                # was never retrieved". A task teardown could not finish (it deadlocked) has none.
+                for task in (main_task, *self._started):
+                    if task.done() and not task.cancelled():
+                        task.exception()
+                self._close()
+
+
+def _describe(error: BaseException) -> str:
+    try:
+        return f"seedloop: {type(error).__name__}: {error}"
+    except Exception:  # a hostile __str__ must not replace the failure being noted
+        return f"seedloop: {type(error).__name__}"
+
+
+def _note(failure: BaseException, text: str) -> None:
+    # An exception that cannot take a note (frozen, unusable __notes__, custom add_note) keeps its
+    # place as the real failure; the note is dropped.
+    with contextlib.suppress(Exception):
+        failure.add_note(text)
+
+
+@contextlib.contextmanager
+def _secondary(failure: BaseException | None) -> Iterator[None]:
+    """A later error must not replace the failure already in flight: it becomes a note on it.
+
+    Only ``Exception`` is absorbed: a ``KeyboardInterrupt``/``SystemExit`` raised while settling
+    still propagates, and an interrupt already in flight is not replaced by a settle ``Exception``.
+    """
+    try:
+        yield
+    except Exception as exc:
+        if failure is None:
+            raise
+        _note(failure, _describe(exc))

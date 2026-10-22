@@ -76,6 +76,8 @@ def ensure_hash_seed(root_seed: int) -> None: ...
 - **`check`** runs `scenario` once per seed. `seeds=N` runs seeds `0..N-1`; an iterable runs exactly
   those seeds. Each run is built from its seed alone (loop, clock, RNG, network, faults). The first seed
   whose run raises — an `assert`, a `SeedloopError`, or any exception from user code — is the failure.
+  Calling `check` or `replay` from inside a running event loop is a usage error, raised at once
+  and never reported as a failing seed.
   With `on_failure="raise"` (default) `check` re-raises it, tagged with the seed; with `"return"` it
   stops and returns the result for programmatic use. Phase 3 routes seed generation and shrinking through
   Hypothesis (ADR-0004), so the reported seed is a *minimal* failing case where shrinking applies.

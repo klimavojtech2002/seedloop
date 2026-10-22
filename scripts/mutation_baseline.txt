@@ -10,5 +10,3 @@ src/seedloop/_net.py::Transport._commit_slow_link_fault#10 bool And->Or [7aa815d
 src/seedloop/_net.py::Transport._draw_bipartition#1 cmp LessThan->LessThanEqual [9be24f9d]  # random() == 0.5 is measure-zero for floats
 src/seedloop/_net.py::Transport._send#3 cmp LessThan->LessThanEqual [38f54dfb]  # random() == loss is measure-zero for floats
 src/seedloop/_net.py::Transport._send#6 cmp LessThan->LessThanEqual [ff7b265b]  # random() == duplicate is measure-zero
-src/seedloop/_run.py::CheckResult#0 bool True->False [fea97f29]  # CheckResult frozen=False; immutability is never relied on
-src/seedloop/_world.py::World._drive#6 int 1->0 [2ebbee77]  # getattr default -1->0, unreachable: every task is stamped

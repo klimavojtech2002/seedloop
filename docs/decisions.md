@@ -713,6 +713,68 @@ timed faults should compose without one's cleanup undoing another's still-active
 - `run_for(faults=[...])`'s public signature (`docs/api.md`) is now fully implemented; no further "design
   target" marker remains on the fault-handle surface.
 
+## ADR-0023 — One run has one owner: refuse misuse early, keep the first failure, close the loop
+
+**Status:** Accepted
+
+**Context.** Driving a run used `run_until_complete` plus a retry loop that swallowed every
+`BaseException` while it waited for the scenario task to settle. Three defects came from that. Calling
+`check` or `replay` inside a running event loop made every wait raise at once, and the retry loop spun
+forever. A `KeyboardInterrupt` raised while the run wound down was swallowed by the same loop, and a
+later error (a deadlock in a cancel handler) could replace the failure already in flight. And a loop
+was only closed on the happy path, so a scenario that raised before its first step, or was not a
+coroutine, left an unclosed loop behind.
+
+**Decision.**
+- **`check` and `replay` refuse to run inside a running event loop, before the seed loop.** The refusal
+  is a private usage error that `check` re-raises untagged: a misuse is not a failing seed, so it never
+  becomes a `CheckResult`, and `given_seed` does not attach a reproduction note to it. The drive keeps
+  its own guard (and closes the scenario coroutine) for callers that reach it directly.
+- **The drive owns its stop steps.** `DeterministicLoop.run_until_done(fut, settle)` steps the loop
+  until `fut` is done, then runs exactly two more steps: asyncio's own stop step and the extra step the
+  drive has always run, so a task spawned in the last step still gets its first moves. Neither step
+  advances the clock, and the after-step checks are cleared between them: invariants that are
+  active during the run describe the logical run, not the cancellation that follows. No
+  done-callback is registered, so nothing is left behind that could stop a later drive. If user code
+  calls `loop.stop()` on or right after the step that finished the scenario, one more step still
+  runs, as before.
+- **The failure in flight wins.** An error raised while the scenario task settles or while teardown runs
+  becomes a note on the failure already in flight, whatever the failure in flight is. An interrupt raised during
+  settling still propagates, and is never replaced by a later error.
+- **The loop is closed on every path**, including a scenario that raises synchronously or is not a
+  coroutine.
+- **`call_at` rejects NaN.** A NaN deadline never fires and kept the loop spinning.
+
+**Consequences.** A run that finished on 0.4.0 gives the same timeline and outcome, with these
+exceptions, all of which were defects:
+- When a task is still pending at the end of teardown (one spawned while teardown was cancelling),
+  0.4.0 replaced the run's real result with an `InvalidStateError`; the real result is now reported.
+  That pending task is not yet waited for.
+- A `KeyboardInterrupt` or `SystemExit` raised by the scenario's cancel handler after a failed
+  invariant used to be replaced by the `InvariantError`; it now propagates.
+- A node failure, or an error from the scenario, followed by a deadlock in teardown used to report the
+  `DeadlockError`; it now reports the first error with the deadlock as a note.
+- User code that stops the loop before the scenario finishes, followed by a failed invariant while the
+  run winds down: 0.4.0 reported the later error and cut teardown short; the first error (the stop) is
+  now reported, the later one is a note, and teardown completes.
+- Any first failure (an error from the scenario, a node, or a check) followed by user code stopping
+  the loop while the run winds down: the first failure is reported, with the stop as a note, instead
+  of the stop's `RuntimeError`.
+- A scenario or node error followed by a different error while the run winds down (a check that
+  fires in the last steps, a failing cancel handler): the first error is reported and the later one
+  is a note, where 0.4.0 reported the later one.
+- The second stop step used to swallow every error. A check that fails there, or an interrupt raised
+  there (`KeyboardInterrupt`, `SystemExit`), now ends the run.
+- A scenario that schedules a NaN timer and returns used to pass; it now raises `ValueError`.
+- A cancel handler that waits on something that never happens, after a failed invariant, now ends the
+  run with the original failure and a note, instead of hanging. A handler that swallows the
+  cancellation and loops forever still spins: teardown is not yet bounded.
+
+Outcome types are otherwise unchanged, but an error can now carry notes it did not have before.
+
+Generated programs are compared with the previous release in `tests/test_differential.py`; that is the
+evidence for the equality above.
+
 ---
 
 ## Planned / deferred decisions

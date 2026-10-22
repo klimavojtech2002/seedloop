@@ -92,6 +92,16 @@ This is the autojump of ADR-0005 / `trio`'s `MockClock`: time only moves when al
 then it moves straight to the next scheduled event. A 10-second `sleep` is a timer at `now+10`; when the
 loop has nothing else to do it jumps there instantly.
 
+## Driving one run
+
+`World._drive` runs the scenario as a task with `DeterministicLoop.run_until_done`, which steps the loop
+until the task is done and then runs exactly two more steps, so a task spawned in the last step still gets
+its first moves. Those two steps never advance the clock, and the invariant checks are cleared between
+them; one registered during the second step stays active, through teardown too. The scenario task is then settled on its own, and every remaining task is cancelled in creation
+order. The first failure of the run is kept: a later error from settling or teardown is attached to it as a
+note, and an interrupt is never replaced. The loop is closed on every path (ADR-0023). `check` and `replay`
+refuse to start inside a running event loop.
+
 ## Virtual clock
 
 `loop.time()` returns `self._sl_time`, a float of simulated monotonic seconds starting at 0.
