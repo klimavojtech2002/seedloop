@@ -18,10 +18,39 @@ import hashlib
 import os
 import random
 import sys
+import threading
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from typing import Any
 
 _REEXEC_GUARD = "_SEEDLOOP_HASHSEED_REEXEC"
+
+_patch_lock = threading.RLock()
+
+
+@contextmanager
+def exclusive_patching() -> Iterator[None]:
+    """Serialize runs that install process-wide patches (nesting on one thread is fine).
+
+    Two threads patching at once would save each other's wrappers as the "original" and leave the
+    process patched for good. A second thread therefore waits for the first run to finish, so the
+    outcome never depends on thread timing (ADR-0026).
+    """
+    with _patch_lock:
+        yield
+
+
+def _install(owner: Any, name: str, value: Any) -> None:
+    setattr(owner, name, value)
+
+
+def restore_if_ours(owner: Any, name: str, ours: Any, original: Any) -> None:
+    """Put ``original`` back, but only if ``ours`` is still installed under ``name``.
+
+    Code that replaced the function while a run was active keeps its replacement.
+    """
+    if getattr(owner, name) is ours:
+        setattr(owner, name, original)
 
 
 def substream(root_seed: int, label: str) -> random.Random:
@@ -41,19 +70,30 @@ def csprng_shim(stream: random.Random) -> Iterator[None]:
     """Route ``os.urandom`` and ``secrets`` to ``stream`` for the duration of the context.
 
     Patches both ``os.urandom`` and the ``random._urandom`` alias that ``secrets`` draws through;
-    restores both originals on exit, even on error. Scoped to a single run; runs do not overlap in
-    one process.
+    restores both originals on exit, even on error. Only the calling thread is seeded: any other
+    thread keeps the real source. Runs from different threads wait for each other (ADR-0026).
     """
     seeded = _seeded_urandom(stream)
-    orig_os = os.urandom
-    orig_random = random._urandom  # type: ignore[attr-defined]  # private alias secrets draws through
-    os.urandom = seeded
-    random._urandom = seeded  # type: ignore[attr-defined]
-    try:
-        yield
-    finally:
-        os.urandom = orig_os
-        random._urandom = orig_random  # type: ignore[attr-defined]
+    owner = threading.get_ident()
+    with exclusive_patching():
+        # Read the originals only once the lock is held, or a concurrent run's wrapper is "saved".
+        orig_os = os.urandom
+        orig_random = random._urandom  # type: ignore[attr-defined]  # private alias secrets uses
+
+        def scoped_os(n: int) -> bytes:
+            return seeded(n) if threading.get_ident() == owner else orig_os(n)
+
+        def scoped_random(n: int) -> bytes:
+            return seeded(n) if threading.get_ident() == owner else orig_random(n)
+
+        # Each restore is registered before its install, and the stack runs every restore even if
+        # one is interrupted, so an interrupt between two steps cannot leave a name patched.
+        with ExitStack() as undo:
+            undo.callback(restore_if_ours, os, "urandom", scoped_os, orig_os)
+            undo.callback(restore_if_ours, random, "_urandom", scoped_random, orig_random)
+            _install(os, "urandom", scoped_os)
+            _install(random, "_urandom", scoped_random)
+            yield
 
 
 def _seeded_urandom(stream: random.Random) -> Callable[[int], bytes]:

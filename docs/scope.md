@@ -31,7 +31,9 @@ source are tripwires: under `check(..., audit=True)` an uncontrolled source — 
 clocks (wall, monotonic, perf-counter, CPU, and current-time calendar reads), the unseeded global
 `random`, a real thread — raises `EntropyLeakError` (or `BoundaryError` for the thread) instead of
 running silently (ADR-0008). A leak is therefore a loud, reproducible failure on the
-seed that hit it, not a guarantee you have to take on trust. The tripwires intercept Python-level
+seed that hit it, not a guarantee you have to take on trust. The tripwires and the seeded `os.urandom`
+apply to the thread that started the run; other threads keep the real functions, and runs from
+different threads take turns (ADR-0026). The tripwires intercept Python-level
 attribute calls; a reference bound before the audit started (`from time import monotonic`), a call
 that reads the clock in C below the `time.*` attributes (`datetime.now()`/`utcnow()`), or a C
 extension that reads the clock or the OS RNG directly is not caught — the same reason C-extension
