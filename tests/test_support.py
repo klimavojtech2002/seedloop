@@ -219,12 +219,9 @@ def test_output_printed_before_the_cap_survives_a_grandchild_that_escaped_the_gr
 @pytest.mark.meta
 def test_orphan_kill_many_times() -> None:
     code = (
-        "import subprocess, sys
-"
-        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])
-"
-        "print(child.pid, flush=True)
-"
+        "import subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])\n"
+        "print(child.pid, flush=True)\n"
     )
 
     def state(pid: int) -> str:
@@ -252,6 +249,4 @@ def test_orphan_kill_many_times() -> None:
             time.sleep(0.02)
         if last not in ("gone", "Z"):
             bad.append(f"attempt {attempt} pid {grandchild}: {history}")
-    assert not bad, "DIAGMANY " + str(len(bad)) + "
-" + "
-".join(bad)
+    assert not bad, "DIAGMANY " + str(len(bad)) + chr(10) + chr(10).join(bad)
