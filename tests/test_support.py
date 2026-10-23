@@ -214,3 +214,27 @@ def test_output_printed_before_the_cap_survives_a_grandchild_that_escaped_the_gr
         if pid:
             with contextlib.suppress(ProcessLookupError):
                 os.kill(pid, getattr(signal, "SIGKILL"))  # noqa: B009
+
+
+@pytest.mark.meta
+def test_orphan_kill_many_times() -> None:
+    code = (
+        "import subprocess, sys\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])\n"
+        "print(child.pid, flush=True)\n"
+    )
+    bad: list[str] = []
+    for attempt in range(25):
+        with pytest.raises(IsolatedTimeout) as caught:
+            run_isolated(code, timeout=2)
+        grandchild = int(caught.value.stdout.split()[0])
+        deadline = time.monotonic() + 6
+        while pid_alive(grandchild) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if pid_alive(grandchild):
+            table = subprocess.run(
+                ["ps", "-eo", "pid,ppid,pgid,sid,stat,etimes,cmd"], capture_output=True, text=True
+            ).stdout
+            status = Path(f"/proc/{grandchild}/status").read_text(encoding="utf-8")
+            bad.append(f"attempt {attempt} pid {grandchild}\n{status}\n{table}")
+    assert not bad, "DIAGMANY " + str(len(bad)) + "\n" + "\n".join(bad[:2])
