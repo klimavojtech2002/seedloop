@@ -36,14 +36,14 @@ seed decides, per message:
 
 | Effect | How it is produced |
 |--------|--------------------|
-| **Latency** | A delay drawn from a configured distribution; the delivery event is scheduled at `now + delay`. |
+| **Latency** | A delay drawn from a fixed range (1 to 20 ms), scaled by any active slow-link fault; the delivery event is scheduled at `now + delay`. |
 | **Reordering** | Emergent, not separately injected: two messages sent close together draw independent latencies, so arrival order can differ from send order. |
 | **Drop** | With the link's loss probability, no delivery event is scheduled (the message still draws its `net` latency, so dropping it does not shift other messages). |
 | **Duplication** | With the link's duplication probability, a second delivery is scheduled — the original's latency drawn from `net`, the duplicate's from `faults`. |
 | **Partition** | A reachability predicate on the link; while open, a delivery that fires is dropped. |
 
-The distributions and probabilities are run parameters with documented defaults; pinning them forces a
-regime, leaving them lets the seed explore. Nothing here reads wall-clock time or a real socket — the
+Loss and duplication are per-endpoint parameters of `bind` (default: none); the latency range is fixed.
+Nothing here reads wall-clock time or a real socket — the
 "network" is queues and timers.
 
 ## Opt-in reliable, ordered delivery
@@ -85,7 +85,7 @@ The same seed injects the same loss, duplication, and (under a scenario's topolo
 effects at the same virtual times every run — which is what makes a partition-dependent bug reproducible
 (the DST payoff: `check` finds the failing seed, `replay` reproduces it).
 
-**Seed-scheduled faults** (ADR-0022): `world.run_for(seconds, faults=[...])` also accepts `Fault` handles
+**Seed-scheduled faults** (ADR-0022): `world.run_for(seconds=..., faults=[...])` also accepts `Fault` handles
 from `world.partition()`/`slow_link()`/`crash()` — a different set of methods from `world.net.partition`/
 `heal` above, returning an inert handle `run_for` resolves and schedules rather than acting immediately.
 Any field a handle's constructor leaves unset (which nodes; for `partition`/`slow_link`, also when and

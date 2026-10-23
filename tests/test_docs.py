@@ -19,17 +19,39 @@ def markdown_files(root: Path) -> list[Path]:
     return [root / name for name in _DOCS] + sorted((root / "docs").glob("*.md"))
 
 
+def _slug(heading: str) -> str:
+    """The anchor GitHub gives a heading: lower case, punctuation dropped, spaces to hyphens."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower().replace("`", "")).replace(" ", "-")
+
+
+def _anchors(path: Path) -> set[str]:
+    headings = re.findall(r"^#{1,6}\s+(.+?)\s*$", path.read_text(encoding="utf-8"), re.MULTILINE)
+    return {_slug(h) for h in headings}
+
+
+def _resolves(destination: Path, anchor: str) -> bool:
+    if not destination.exists():
+        return False
+    return not anchor or destination.suffix != ".md" or anchor in _anchors(destination)
+
+
 def broken_links(root: Path) -> list[str]:
-    """Relative links in the markdown files that point at a file that does not exist."""
+    """Relative links whose file does not exist, or whose #anchor is not a heading of that file."""
     broken = []
     for path in markdown_files(root):
         for target in _LINK.findall(path.read_text(encoding="utf-8")):
-            if re.match(r"^[a-z][a-z0-9+.-]*:", target) or target.startswith("#"):
-                continue  # an absolute URL or an anchor in the same file
-            relative = target.split("#", 1)[0]
-            if relative and not (path.parent / relative).exists():
+            if re.match(r"^[a-z][a-z0-9+.-]*:", target):
+                continue  # an absolute URL
+            relative, _, anchor = target.partition("#")
+            destination = path.parent / relative if relative else path
+            if not _resolves(destination, anchor):
                 broken.append(f"{path.relative_to(root).as_posix()} -> {target}")
     return broken
+
+
+def adr_numbers(root: Path) -> list[int]:
+    decisions = (root / "docs" / "decisions.md").read_text(encoding="utf-8")
+    return sorted(int(n) for n in re.findall(r"^## ADR-(\d{4})\b", decisions, re.MULTILINE))
 
 
 def unknown_adrs(root: Path) -> list[str]:
@@ -46,6 +68,11 @@ def unknown_adrs(root: Path) -> list[str]:
 
 def test_every_relative_link_resolves() -> None:
     assert not broken_links(ROOT)
+
+
+def test_the_adr_numbers_have_no_gap() -> None:
+    numbers = adr_numbers(ROOT)
+    assert numbers == list(range(1, len(numbers) + 1))
 
 
 def test_every_cited_adr_is_defined() -> None:
@@ -106,7 +133,7 @@ def _tree(tmp_path: Path, *, readme: str, decisions: str, code: str = "") -> Pat
 def test_a_link_to_a_missing_file_is_found(tmp_path: Path) -> None:
     root = _tree(
         tmp_path,
-        readme="[ok](docs/decisions.md#x) [gone](docs/missing.md) [web](https://example.org/a)",
+        readme="[ok](docs/decisions.md) [gone](docs/missing.md) [web](https://example.org/a)",
         decisions="",
     )
     assert broken_links(root) == ["README.md -> docs/missing.md"]
@@ -122,4 +149,18 @@ def test_a_cited_adr_that_is_not_defined_is_found(tmp_path: Path) -> None:
     assert unknown_adrs(root) == [
         "ADR-0009 in ['README.md']",
         "ADR-0042 in ['src/mod.py']",
+    ]
+
+
+def test_a_link_to_a_missing_heading_is_found(tmp_path: Path) -> None:
+    root = _tree(
+        tmp_path,
+        readme=(
+            "[good](docs/decisions.md#adr-0001--one) [bad](docs/decisions.md#adr-0002) [own](#nope)"
+        ),
+        decisions="## ADR-0001 — one\n",
+    )
+    assert broken_links(root) == [
+        "README.md -> docs/decisions.md#adr-0002",
+        "README.md -> #nope",
     ]

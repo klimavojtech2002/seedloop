@@ -80,9 +80,9 @@ def ensure_hash_seed(root_seed: int) -> None: ...
   the one reported and the others are attached to it as notes (`__notes__`); a `KeyboardInterrupt` or
   `SystemExit` is never swallowed or replaced.
   With `on_failure="raise"` (default) `check` re-raises it, tagged with the seed; with `"return"` it
-  stops and returns the result for programmatic use. With the optional Hypothesis extra, seed generation
-  and shrinking go through Hypothesis (ADR-0004), so the reported seed is a *minimal* failing case
-  where shrinking applies.
+  stops and returns the result for programmatic use. The optional Hypothesis extra offers
+  `seedloop.hypothesis.seeds` and `given_seed` to explore seeds with Hypothesis (ADR-0020); `check`
+  itself does not use it.
 - **`replay`** rebuilds the exact World for one seed and runs it once. Same seed → same timeline → same
   outcome, within a minor version (ADR-0011).
 - **`ensure_hash_seed`** pins `PYTHONHASHSEED` for the process by re-running the interpreter, for code

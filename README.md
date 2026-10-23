@@ -164,7 +164,7 @@ demo. The 4 gates (lint, format, types, tests) run green on Linux/macOS/Windows 
 One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
 `always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario
 coroutine returns and before teardown cancels it. Pre-existing since `v0.3.2`, not introduced by
-0.4.0. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md).
+0.4.0. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
 
 Full API in [docs/api.md](docs/api.md), design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

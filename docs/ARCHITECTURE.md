@@ -90,7 +90,7 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
 - **Simulated network** — the controllable seam. Nodes exchange messages through an in-memory
   transport, not real sockets; the seed decides latency, reordering, drops, and partitions.
 - **Fault scheduler** — turns "chaos" into a reproducible function of the seed: which links partition,
-  when, for how long, which node pauses.
+  when, for how long, which node crashes.
 
 ## How a run works
 
@@ -141,7 +141,7 @@ Each part is useful on its own, so a project can adopt as much as it needs.
 
 ## The demonstration
 
-The repository ships a worked example that is also the proof: a small Raft (or CRDT) implementation in
+The repository ships a worked example that is also the proof: a small Raft implementation in
 pure Python, run under `seedloop`, with a real concurrency bug found under partition and replayed from
 its seed — the same failure, every time. That is both the test of the framework and the thing a
 reviewer can run in one command.

@@ -1,6 +1,6 @@
 # Internals
 
-How the deterministic core is built, in enough detail to implement it and to defend it. The public
+How the deterministic core is built, in enough detail to implement it and to review it. The public
 behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *why* of each
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
@@ -136,7 +136,7 @@ per process (the very thing ADR-0010 pins) and would make the split itself nonde
 ## Controlling the CSPRNG
 
 `os.urandom`, `secrets`, and `random.SystemRandom` must yield from the seed during a run. A subtlety
-caught during design: shimming `os.urandom` alone is **not enough**. `random` binds the function at
+worth knowing: shimming `os.urandom` alone is **not enough**. `random` binds the function at
 import time (`from os import urandom as _urandom`), and `secrets` draws through `random.SystemRandom`, so
 a later reassignment of `os.urandom` does not reach it. Verified: with only `os.urandom` patched,
 `secrets.token_bytes` still returned unshimmed bytes; patching `random._urandom` as well brought it under
@@ -157,8 +157,9 @@ is still the one the run installed (ADR-0024).
 such order that reaches scheduling or message handling is a silent entropy leak. It is the one source
 fixed *before* interpreter start, so it cannot be shimmed from inside a run.
 
-When a run needs it pinned, seedloop **re-execs the interpreter** with `PYTHONHASHSEED` set to a fixed
-value derived from the run seed, then runs the scenario in the child. Verified: two child processes
+`check` and `replay` do not pin it (ADR-0015). A program whose own code depends on hash order calls
+`seedloop.ensure_hash_seed(seed)` at its entry point, which **re-execs the interpreter** with
+`PYTHONHASHSEED` set to a fixed value derived from the seed and carries on in the child. Verified: two child processes
 launched with the same `PYTHONHASHSEED` hash identically; a different value differs. The re-exec is a
 one-time cost at the boundary and is invisible to user code. (The cleaner design keeps library code from
 *depending* on hash order at all; the pin is the backstop for user code that does.)
@@ -203,7 +204,7 @@ of the seed, which is what makes "chaos" reproducible rather than random.
 
 ## Proving it: the timeline recorder
 
-Determinism is *proven by replay*, not asserted (the prime rule). The **timeline** has two sources.
+Determinism is *proven by replay*, not asserted. The **timeline** has two sources.
 Scenario code adds entries itself: `world.record(event)` appends a `(virtual_time, event)` pair, so a
 scenario logs the decisions whose reproducibility it cares about (its `rng` draws, its timed actions).
 The network and fault scheduler add the rest automatically, stamped with the monotonic message and fault

@@ -1,8 +1,9 @@
 # Decision records
 
 Short records of the non-obvious choices in `seedloop` and the reasoning behind them, so a reviewer
-can see *why*, not just *what*. Several of these are scoping decisions that were made by adversarially
-trying to disprove the project first — the boundary in [scope.md](scope.md) is their consequence.
+can see *why*, not just *what*. Several of these are scoping decisions, taken by looking for the
+strongest argument against the project first — the boundary in [scope.md](scope.md) is their
+consequence.
 
 Format: **Context → Decision → Consequences.** Status is `Accepted` unless noted.
 
@@ -13,7 +14,7 @@ Format: **Context → Decision → Consequences.** Status is `Accepted` unless n
 **Status:** Accepted
 
 **Context.** A DST tool could try to drive *real* network I/O through its custom event loop, so that
-unmodified apps "just work." Investigated honestly, that path is a multi-person-year effort with leaks
+unmodified apps "just work." That path is a multi-person-year effort with leaks
 even then: it requires implementing enough of CPython's private, unstable `BaseEventLoop` interface to
 satisfy real drivers; building a faithful TCP/IP simulation (its own multi-month subsystem — `madsim`
 had to fork `tokio` *and* `tokio-postgres`); and it still loses determinism wherever a C extension
@@ -26,7 +27,7 @@ seam is small, pure-Python, and tool-defined.
 
 **Consequences.**
 - Dodges the two open-ended hard parts (a correct custom loop over private APIs, and a faithful TCP
-  stack), bringing the project into solo, ~2–4-month reach.
+  stack), keeping the project small enough to verify.
 - The determinism guarantee is real because the seam is fully controlled.
 - Trade-off: code wired directly to real drivers must first be refactored to sans-I/O to be testable.
   That refactor is exactly what makes code testable *and* reusable — DST and sans-I/O are natural
@@ -42,7 +43,7 @@ seam is small, pure-Python, and tool-defined.
 unobservable points and the GIL does not make interleavings reproducible; `multiprocessing` has
 separate memory and OS scheduling. This is the same wall that blocks DST in Go.
 
-**Decision.** Target single-threaded `asyncio`. Inside a simulated run, reject or warn on
+**Decision.** Target single-threaded `asyncio`. Inside a simulated run, reject
 `run_in_executor`, `threading`, and subprocess use rather than pretending to control them.
 
 **Consequences.**
@@ -172,7 +173,7 @@ or both. Static analysis of arbitrary Python is unreliable — dynamic imports a
 and it reports leaks that never execute.
 
 **Decision.** The auditor works by **runtime tripwires**. The World already owns every entropy source;
-in audit mode the same interception points raise a specific `EntropyLeakError` (or warn) instead of
+in audit mode the same interception points raise a specific `EntropyLeakError` instead of
 silently substituting a seeded source. A leak therefore surfaces as a loud, reproducible failure on the
 seed that triggered it.
 
@@ -240,7 +241,7 @@ prevents infinite recursion. The CSPRNG shim separately patches both `os.urandom
 - The primary guarantee is that seedloop's own library code never depends on hash order; the pin is a
   backstop for *user* code that does. A replayed seed re-derives the same `PYTHONHASHSEED` it had when
   found, so reproduction holds regardless of whether a sweep pins once per child or per seed — that
-  execution detail is settled in the build, not a correctness question, precisely because library code
+  execution detail is not a correctness question, precisely because library code
   does not rely on the value.
 - Cost: a one-time process re-exec at the boundary; invisible to user code.
 - Trade-off: a run that pins the hash seed starts a child process. Acceptable and bounded; the
@@ -349,8 +350,8 @@ safety net so a hang regression fails fast.
 shipped package still has zero third-party dependencies.
 
 **Consequences.**
-- A hang becomes a fast, visible test failure instead of an indefinite block (verified: a planted
-  autojump bug now trips the cap).
+- A hang becomes a fast, visible test failure instead of an indefinite block (tested: a planted
+  autojump bug trips the cap).
 - No runtime impact — `pytest-timeout` is in the `dev` extra only.
 - Trade-off: a legitimately slow test would trip the cap; a non-issue here, since the whole suite runs in
   virtual time and finishes in milliseconds.
@@ -362,8 +363,8 @@ shipped package still has zero third-party dependencies.
 **Status:** Accepted
 
 **Context.** ADR-0010 gives a launcher that pins `PYTHONHASHSEED` by re-running the interpreter. An
-earlier design leaned toward `check` re-execing once into a pinned child and sweeping there. Building it
-surfaced the problem: the launcher re-runs the *whole* process, and `check` typically runs under a test
+earlier design leaned toward `check` re-execing once into a pinned child and sweeping there. That has a
+problem: the launcher re-runs the *whole* process, and `check` typically runs under a test
 runner — implicitly re-execing `pytest` from inside a test is hostile (it restarts the entire run).
 
 **Decision.** `check`/`replay` do **not** pin the hash seed. The determinism guarantee rests on
@@ -382,9 +383,9 @@ point (before `check`), where re-execing the process is expected and safe.
 
 ## ADR-0016 — Scenario-driven partitions now; seed-scheduled faults deferred
 
-**Status:** Accepted
+**Status:** Accepted; the seed-scheduled faults it defers were implemented later (ADR-0022).
 
-**Context.** `docs/api.md` sketches a `world.run_for(seconds, faults=[world.partition(), ...])` API where
+**Context.** The API document sketched a `world.run_for(seconds=..., faults=[world.partition(), ...])` API where
 the *seed* chooses fault timing (which links partition, when, for how long). Building the fault model
 showed that API couples fault injection with a time-advancing primitive (`run_for`) and a fault-handle
 constructor set — a larger surface than the fault *mechanism* itself.
@@ -439,7 +440,7 @@ wants property-based input generation + shrinking opts in.
 **Status:** Accepted
 
 **Context.** The project needs an end-to-end proof a reviewer can run: a real protocol under seedloop
-where a concurrency bug is found and replayed. The honesty risk (prime directive) is over-claiming —
+where a concurrency bug is found and replayed. The risk is over-claiming —
 presenting a *planted* bug as a *discovered* flaw in canonical Raft, or shipping a demo whose "bug" is
 actually an unintended mistake in the harness.
 
@@ -458,8 +459,8 @@ drawn from `world.rng`, so the seed owns the race.
   split-brain the majority rule exists to prevent), labelled as a toggle, and the corrected control rules
   out a harness artefact.
 - Building it validated the framework end to end (loop + clock + entropy + network + faults + invariants
-  + check/replay composed against a non-trivial protocol) — and surfaced a genuine subtle bug in the
-  first "correct" election (a same-term vote reset on heartbeat), exactly the class of bug DST catches.
+  + check/replay composed against a non-trivial protocol) — and exposed a subtle bug in an early
+  "correct" election (a same-term vote reset on heartbeat), exactly the class of bug DST catches.
 - Trade-off: election-only is not full Raft. Stated plainly; election safety is *the* Raft safety
   property and split-brain is its canonical violation — enough to be real, log replication noted as a
   later extension.
@@ -840,9 +841,7 @@ read.
   awaiting any cancellable future) the instant `task.cancel()` is issued. Measured precisely: this is a **one-scheduling-step-wide race**, not a broad window — a task whose violation is two
   or more steps away is cleanly cancelled first (no violation occurs at all), and a task whose violation
   is due this step or earlier is still caught by the active hooks. Only the exact one-step coincidence
-  slips through. The first reproduction did not actually demonstrate a violation (it checked that
-  `result.error is None`, not whether the invariant had broken), so the window was measured again before
-  it was described here. It is identical on `v0.3.2` across the full boundary, not just the one case
+  slips through. It is identical on `v0.3.2` across the full boundary, not just the one case
   first found, and it was not introduced by 0.4.0. Deferred because a correct fix needs a design
   decision first: how many further steps (if any) should still be checked before teardown begins, and
   how that interacts with the original reason invariants stop being checked at all (a node's own cancel
