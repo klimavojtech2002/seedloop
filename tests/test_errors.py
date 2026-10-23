@@ -101,3 +101,18 @@ def test_an_invariant_error_keeps_its_name_and_time_across_pickle() -> None:
 def test_an_entropy_leak_error_keeps_its_source_across_pickle() -> None:
     clone = pickle.loads(pickle.dumps(EntropyLeakError("os.urandom")))
     assert clone.source == "os.urandom"
+
+
+class _StrictInvariant(InvariantError):
+    pass
+
+
+class _QuietLeak(EntropyLeakError):
+    pass
+
+
+def test_a_subclass_round_trips_as_its_own_type() -> None:
+    for original in (_StrictInvariant("inv", 2.0), _QuietLeak("time.time")):
+        clone = pickle.loads(pickle.dumps(original))
+        assert type(clone) is type(original)
+        assert clone.args == original.args

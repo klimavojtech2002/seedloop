@@ -36,6 +36,9 @@ class InvariantError(SeedloopError):
     A continuous safety property (e.g. "at most one leader") that must hold throughout, checked
     after every step; the first step where it is false raises this, which ``check`` reports as the
     failure. Carries the invariant's ``name`` and the virtual ``time`` of the violation.
+
+    A subclass must keep the ``(name, time)`` constructor, or override ``__reduce__``, to stay
+    picklable.
     """
 
     def __init__(self, name: str, time: float) -> None:
@@ -54,7 +57,8 @@ class EntropyLeakError(BoundaryError):
 
     In audit mode the non-determinism auditor raises this when code reaches for real
     ``os.urandom``/``secrets``, real time, or the unseeded global ``random`` instead of the World's
-    seeded source (``docs/decisions.md`` ADR-0008). Carries the offending ``source``.
+    seeded source (``docs/decisions.md`` ADR-0008). Carries the offending ``source``. A subclass
+    must keep the ``(source)`` constructor, or override ``__reduce__``, to stay picklable.
     """
 
     def __init__(self, source: str) -> None:
