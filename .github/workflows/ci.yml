@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -90,6 +93,39 @@ jobs:
         run: python -m pip install -e ".[dev,mutation]"
       - name: Meta tests
         run: pytest -q -m meta
+
+  package:
+    # What ships must work: build both artifacts, check their metadata, and run the suite from the
+    # unpacked source distribution (it carries its own tests) and the demo from the installed wheel.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Build and check
+        run: |
+          python -m pip install build twine
+          python -m build
+          twine check --strict dist/*
+      - name: Run the suite from the source distribution
+        run: |
+          mkdir -p /tmp/sdist
+          tar -xzf dist/*.tar.gz -C /tmp/sdist --strip-components=1
+          python -m venv /tmp/sdist-venv
+          cd /tmp/sdist
+          /tmp/sdist-venv/bin/python -m pip install ".[dev]"
+          /tmp/sdist-venv/bin/python -m pytest -q
+      - name: Run the demo from the wheel
+        run: |
+          python -m venv /tmp/wheel-venv
+          /tmp/wheel-venv/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/wheel-venv/bin/python -m seedloop.demos.raft
 
   differential:
     # Generated programs must behave exactly like the previously released wheel (needs the network
