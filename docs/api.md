@@ -12,8 +12,6 @@ The shape follows the boundary in [scope.md](scope.md) and the decisions in
 [decisions.md](decisions.md): user code is sans-I/O, talks to an addressed message port, and a run is a
 pure function of its seed.
 
-Names use the working package name `seedloop` (ADR naming is still open); nothing here hard-codes the
-name where a rename would be costly.
 
 ## The shape of a test
 
@@ -66,7 +64,7 @@ def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None: ...
 
 
 @contextmanager
-def audit_mode() -> Iterator[None]: ...  # trip on uncontrolled entropy; this thread only (ADR-0026)
+def audit_mode() -> Iterator[None]: ...  # trip on uncontrolled entropy; this thread only (ADR-0024)
 
 
 def ensure_hash_seed(root_seed: int) -> None: ...
@@ -78,8 +76,8 @@ def ensure_hash_seed(root_seed: int) -> None: ...
   Calling `check` or `replay` from inside a running event loop is a usage error, raised at once
   and never reported as a failing seed. To run a sweep from async code, hand it to a worker thread:
   `await asyncio.to_thread(seedloop.check, scenario, seeds=...)`. If more than one thing goes wrong in
-  a run (an invariant fails and a node's cancel handler then raises, say), the first failure is the one
-  reported and the others are attached to it as notes (`__notes__`); a `KeyboardInterrupt` or
+  a run (an invariant fails and the scenario's own cancel handler then raises, say), the first failure is
+  the one reported and the others are attached to it as notes (`__notes__`); a `KeyboardInterrupt` or
   `SystemExit` is never swallowed or replaced.
   With `on_failure="raise"` (default) `check` re-raises it, tagged with the seed; with `"return"` it
   stops and returns the result for programmatic use. With the optional Hypothesis extra, seed generation

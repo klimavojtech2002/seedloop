@@ -609,8 +609,8 @@ other.
 **Context.** ADR-0016 shipped message-level chaos (loss, duplication, scenario-driven partition) but
 deferred the seed-*scheduled* half: `world.partition()`/`slow_link()`/`crash()` as `Fault` handles
 consumed by `run_for(faults=[...])`, where the seed — not the scenario — picks targets and timing.
-Three design questions had no answer in the existing docs: what "crash" means mechanically (`docs/api.md`
-itself flagged "recovery semantics (clean stop vs. restart)" as unsettled); how multiple, independently
+Three design questions had no answer in the existing docs: what "crash" means mechanically (clean stop
+versus restart was left unsettled); how multiple, independently
 timed faults should compose without one's cleanup undoing another's still-active effect; and whether
 `partition`/`slow_link` timing can be pinned the way `crash`'s `at` can.
 
@@ -665,9 +665,9 @@ timed faults should compose without one's cleanup undoing another's still-active
   address, so two addresses nominally "in the same" listed group could still end up cut from each other.
 - **`world.partition()`/`world.net.partition()` keep their existing names, not renamed.** They are
   genuinely different (deferred/seed-timed handle-returning vs. immediate/scenario-timed, applied right
-  away), and `docs/api.md` has committed to both spellings since before this change — a public repo's already-
+  away), and `docs/api.md` has committed to both spellings since before the fault handles — a public repo's already-
   published surface. Mitigated with an explicit cross-reference in both docstrings rather than a rename
-  (Vojtěch's explicit call, weighed against renaming one side to `schedule_partition`).
+  (an explicit choice, weighed against renaming one side to `schedule_partition`).
 - **`run_for` validates every fault in `faults` before committing any of them** (`Transport._validate_fault`
   then `_commit_fault`, two full passes over the list), so an invalid fault later in the list can never
   leave an earlier, valid one already committed — its `"faults"` draw consumed, a timeline event recorded,
@@ -784,7 +784,7 @@ evidence for the equality above.
 
 ---
 
-## ADR-0026 — Process-wide patches are serialized, thread-scoped and restored only if still ours
+## ADR-0024 — Process-wide patches are serialized, thread-scoped and restored only if still ours
 
 **Status:** Accepted
 
@@ -843,14 +843,13 @@ read.
   slips through. The first reproduction did not actually demonstrate a violation (it checked that
   `result.error is None`, not whether the invariant had broken), so the window was measured again before
   it was described here. It is identical on `v0.3.2` across the full boundary, not just the one case
-  first found, and it was not introduced by 0.4.0. Deferred rather than patched under release
-  pressure: a correct fix needs its own design pass — how many further steps (if any) should still be
-  checked before teardown begins, and how that interacts with the original reason invariants stop being
-  checked at all (a node's own cancel handler mutating state must not manufacture a false violation).
-  Worth taking seriously despite the narrow window: across a `check(seeds=N)` sweep where a node's own timing depends on seeded network latency,
-  the step at which it would misbehave shifts by seed, so the one-step coincidence only has to land once.
+  first found, and it was not introduced by 0.4.0. Deferred because a correct fix needs a design
+  decision first: how many further steps (if any) should still be checked before teardown begins, and
+  how that interacts with the original reason invariants stop being checked at all (a node's own cancel
+  handler mutating state must not manufacture a false violation). Worth taking seriously despite the
+  narrow window: across a `check(seeds=N)` sweep where a node's own timing depends on seeded network
+  latency, the step at which it would misbehave shifts by seed, so the one-step coincidence only has to
+  land once.
 
-*Resolved since the first draft:* **naming** — `seedloop` is adopted as the name (free on PyPI at the
-time of writing; confirm at first release). **Reliable-channel fidelity** (ADR-0006 opt-in) — in-order,
-no-loss, whole-message delivery only; no flow control or backpressure, as those are TCP fidelity and out
-of scope by ADR-0001.
+**Reliable-channel fidelity** (ADR-0006 opt-in) is settled: in-order, no-loss, whole-message delivery
+only; no flow control or backpressure, as those are TCP fidelity and out of scope by ADR-0001.

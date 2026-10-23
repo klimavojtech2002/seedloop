@@ -70,6 +70,16 @@ def test_every_example_runs(example: Path) -> None:
     assert result.returncode == 0, result.stderr[-600:]
 
 
+def test_the_readme_shows_what_the_quickstart_prints() -> None:
+    result = run_isolated(
+        f"import runpy; runpy.run_path({str(ROOT / 'examples' / 'quickstart.py')!r}, "
+        "run_name='__main__')",
+        timeout=60,
+    )
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert result.stdout.strip() in readme
+
+
 def test_the_quickstart_finds_the_bug_replays_it_and_passes_once_fixed() -> None:
     result = run_isolated(
         f"import runpy; runpy.run_path({str(ROOT / 'examples' / 'quickstart.py')!r}, "

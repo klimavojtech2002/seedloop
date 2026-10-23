@@ -150,7 +150,7 @@ says so rather than pretending otherwise. Full boundary in [docs/scope.md](docs/
 (`_run_once`'s `select()`), rather than reimplementing scheduling from scratch: asyncio's own
 `call_soon` FIFO ready queue and Task/Future machinery are already deterministic, so the loop
 inherits them and only cuts the one seam that isn't (ADR-0013 in
-[docs/decisions.md](docs/decisions.md)). The rest of the design log — 22 decisions, each with
+[docs/decisions.md](docs/decisions.md)). The rest of the design log — every decision, each with
 what was considered and rejected — is there too.
 
 ## Status

@@ -321,8 +321,8 @@ def test_slow_link_pinned_b_resolves_a_from_bound_addresses() -> None:
 def test_slow_link_pinned_b_never_resolves_a_to_the_same_address() -> None:
     # A single seed is not enough to prove this: drawing `a` from every bound address without
     # excluding the pinned `b` collapses the pair on a fraction of seeds (silently inert, since
-    # frozenset((a, b)) then never matches a real (src, dst) pair) -- found by an independent
-    # review. Swept across many seeds, not just one.
+    # frozenset((a, b)) then never matches a real (src, dst) pair) -- an easy mistake.
+    # Swept across many seeds, not just one.
     async def scenario(world: World) -> None:
         world.net.bind(0)
         world.net.bind(1)

@@ -149,7 +149,7 @@ deterministic run cannot give.
 
 The patches are process-wide, so they are guarded: runs on different threads take turns on a lock, the
 shim and the tripwires act only on the thread that started the run, and a name is put back only if it
-is still the one the run installed (ADR-0026).
+is still the one the run installed (ADR-0024).
 
 ## Pinning hash order
 

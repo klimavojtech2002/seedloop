@@ -1,4 +1,4 @@
-"""Integration tests: the loop attaches via loop_factory, and cancellation works."""
+"""Integration tests: the loop runs under asyncio's own runners, and cancellation works."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ _EXPECTED = [("a", 0), ("b", 0), ("a", 1), ("b", 1), ("a", 2), ("b", 2)]
 
 
 def _assert_seedloop_running() -> None:
-    # Proves loop_factory actually attached OUR loop. The stock asyncio loop is also FIFO and
+    # Proves the run actually used OUR loop. The stock asyncio loop is also FIFO and
     # produces the same interleaving, so without this check the order assertions below would pass
     # on the default loop too — a falsely-green "attaches" test.
     assert isinstance(asyncio.get_running_loop(), DeterministicLoop)
