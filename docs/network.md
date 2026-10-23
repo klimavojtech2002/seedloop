@@ -56,7 +56,7 @@ a delivery *policy* over the same channel, not a TCP stack:
 - Delivery order matches send order per `(src, dst)` pair — implemented by giving the link a single
   FIFO delivery queue rather than independent per-message latencies.
 - Latency still applies, and a partition still cuts the link while open (messages queue or fail per the
-  policy settled in Phase 2).
+  policy settled with the network).
 
 What `reliable` does **not** add: byte-stream semantics — partial reads, coalescing, flow control,
 backpressure, connection handshakes. Those are TCP fidelity, out of scope by ADR-0001/0006. A reliable

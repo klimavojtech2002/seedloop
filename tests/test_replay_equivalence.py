@@ -1,4 +1,4 @@
-"""The Phase-1 guarantee: same seed -> same timeline."""
+"""The core guarantee: same seed -> same timeline."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from seedloop._world import World
 
 
 async def _mixed_scenario(world: World) -> None:
-    # A scenario exercising the full Phase-1 surface: RNG draws, sleeps, and concurrency.
+    # A scenario exercising the core surface: RNG draws, sleeps, and concurrency.
     async def worker(name: str) -> None:
         for _ in range(3):
             delay = world.rng.randint(1, 5)

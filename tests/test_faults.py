@@ -226,7 +226,7 @@ def test_sweep_finds_a_loss_triggered_failure() -> None:
     assert _capture_timeline(_lossy_request_ack, result.failing_seed) == bad  # replays identically
 
 
-# --- the slice's own invariants ---
+# --- the invariants of these primitives ---
 
 
 def test_fault_outcomes_do_not_perturb_net_latencies() -> None:

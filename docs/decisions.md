@@ -166,7 +166,7 @@ real one.
 
 **Status:** Accepted
 
-**Context.** Phase 3 plans an auditor that catches entropy leaking past the boundary (uncontrolled
+**Context.** An auditor has to catch entropy leaking past the boundary (uncontrolled
 `os.urandom`, real time, threads, real sockets). It could scan user source statically, trip at runtime,
 or both. Static analysis of arbitrary Python is unreliable — dynamic imports and `getattr` defeat it,
 and it reports leaks that never execute.
@@ -248,7 +248,7 @@ prevents infinite recursion. The CSPRNG shim separately patches both `os.urandom
 
 ---
 
-## ADR-0011 — Replay is stable within a major version, not across
+## ADR-0011 — Replay is stable within a minor version, not across
 
 **Status:** Accepted
 
@@ -257,16 +257,23 @@ reproduces later. But any change to scheduling, the fault model, or entropy deri
 timeline a seed produces. Promising cross-version stability would freeze the internals; promising nothing
 would make recorded seeds worthless.
 
-**Decision.** Within a **major version**, the same seed yields the same timeline and outcome; this is a
-supported contract, covered by replay tests. **Across major versions** it is not guaranteed — a changelog
-entry calls out any timeline-affecting change. The hierarchical seed-splitting (ADR-0009) is what makes
-intra-version stability hold under ordinary refactors.
+**Decision.** With the same seed and the same **minor version** of seedloop (`0.4.x`), a run yields the
+same timeline and outcome; this is a supported contract, covered by replay tests. A patch release keeps
+it except where its changelog entry says a bug fix changed an outcome. **Across minor versions** it is
+not guaranteed — a changelog entry calls out any timeline-affecting change. The hierarchical
+seed-splitting (ADR-0009) is what makes stability hold under ordinary refactors.
+
+The contract does not extend to the interpreter. The `random` functions seedloop draws from gave
+identical bytes on CPython 3.9, 3.11 and 3.13 when measured, but that is not a CPython guarantee. A
+golden timeline and a scenario corpus pin the output on 3.12 to 3.14 in every CI run. Draws a user makes
+through functions that call the C math library (`gauss`, `expovariate`) are not promised to match
+across operating systems.
 
 **Consequences.**
-- Users can trust a recorded seed within the version they found it on, and know exactly when that trust
-  resets.
-- The internals stay free to improve across majors without a false stability promise.
-- Trade-off: a long-lived seed must be re-pinned after a major upgrade. Stated in `api.md`, not implied.
+- Users can trust a recorded seed within the minor version they found it on, and know exactly when that
+  trust resets.
+- The internals stay free to improve across minor versions without a false stability promise.
+- Trade-off: a long-lived seed must be re-pinned after a minor upgrade. Stated in `api.md`, not implied.
 
 ---
 
@@ -284,8 +291,8 @@ no equivalent documented cross-task ordering contract, so its model does not tra
 for equal deadlines (ADR-0009 covers entropy derivation; this is a deterministic counter, not RNG). It
 injects nondeterminism where a real deployment actually has it — the timing and order of I/O readiness,
 modelled as the simulated network's seeded delivery (ADR-0006) — not by reordering ready callbacks.
-Interleaving exploration is therefore a Phase-2 (network) capability; Phase 1 delivers reproducible,
-instant runs, exactly as the roadmap frames the phases.
+Interleaving exploration therefore comes from the simulated network; the core loop on its own delivers
+reproducible, instant runs.
 
 **Consequences.**
 - seedloop stays a faithful drop-in `asyncio` loop. A run that passes then fails across seeds reflects
@@ -320,7 +327,7 @@ asyncio program runs; the only nondeterministic seam is the I/O poll inside `_ru
 - The scheduling semantics are CPython's own, tested semantics — the premise of the whole project
   ("asyncio's scheduling is already deterministic; we replace one seam"). Reimplementing them from
   scratch would risk diverging from asyncio and weakening the faithful-loop claim.
-- The effective surface is the scheduling slice; the I/O surface raises — matching `scope.md` by
+- The effective surface is the scheduling part; the I/O surface raises — matching `scope.md` by
   construction.
 - Trade-off: the loop touches `BaseEventLoop` internals the type stubs do not expose — `_check_closed`,
   `_ready`, and `_stopping` — so a few localized `# type: ignore[attr-defined]` are needed; we are a
@@ -334,7 +341,7 @@ asyncio program runs; the only nondeterministic seam is the I/O poll inside `_ru
 
 **Context.** A bug in the event loop (a broken autojump, a missing timer promotion) can livelock a
 simulated run — a real `asyncio` program would hang there too. Under plain `pytest` a hanging test blocks
-the whole suite and CI indefinitely instead of failing. The deterministic-core slices need a real-time
+the whole suite and CI indefinitely instead of failing. The deterministic core needs a real-time
 safety net so a hang regression fails fast.
 
 **Decision.** Add `pytest-timeout` as a **dev-only** dependency with a 30-second per-test cap
@@ -413,7 +420,7 @@ The invariant API (`world.always`) is separate: it is pure seedloop, no dependen
 scenario needs to state a continuous safety property (the Raft demo's "at most one leader").
 
 **Decision.** Ship the invariant API in the core now (`world.always(predicate, name=...)` →
-`InvariantError`, checked after every step). Defer the Hypothesis integration to its own slice as an
+`InvariantError`, checked after every step). Defer the Hypothesis integration to a later change, as an
 **optional extra** (`pip install seedloop[hypothesis]`), so the core stays dependency-free and a user who
 wants property-based input generation + shrinking opts in.
 
@@ -422,7 +429,7 @@ wants property-based input generation + shrinking opts in.
   dep into everyone's install.
 - DST and property-based testing stay complementary (ADR-0004): the invariant API is the "what must
   always hold" half; the optional Hypothesis extra is the "explore and shrink inputs" half.
-- Trade-off: the headline "integrates with Hypothesis" lands a slice later. Worth it — the integration is
+- Trade-off: the headline "integrates with Hypothesis" arrives separately. Worth it — the integration is
   cleaner as an opt-in extra than baked into `check`, and the invariant API is independently valuable.
 
 ---
@@ -497,7 +504,7 @@ survivors as if equivalent.
 
 **Status:** Accepted
 
-**Context.** ADR-0017 deferred the Hypothesis integration to its own opt-in extra; this slice settles
+**Context.** ADR-0017 deferred the Hypothesis integration to its own opt-in extra; this decision settles
 its *shape*. A raw `st.integers()` for seeds is too little (a naked alias), and wiring Hypothesis into
 `check` is too much — it re-enters the ADR-0017 dependency problem and duplicates `check`'s own sweep.
 The design must also stay inside the determinism boundary of [scope.md](scope.md).
@@ -572,7 +579,7 @@ other.
   whose whole premise is bounded, reproducible runs.
 - `run_for`'s `faults` parameter is accepted (the signature `docs/api.md` already commits to) but a
   non-empty sequence raises `SeedloopError` rather than being silently ignored — seed-scheduled fault
-  handles remain ADR-0016's deferral, now solely attributed to a later slice (0470).
+  handles remain ADR-0016's deferral, now solely the concern of the fault-handle work (ADR-0022).
 
 **Consequences.**
 - The tie-break is a single `if`/`elif` a reviewer reads in one glance, rather than three CPython minor
@@ -587,8 +594,8 @@ other.
 - Nested or concurrent `run_until` calls are rejected outright (`SeedloopError`) — one scenario coroutine
   drives one `World`, so exactly one active call is the supported shape; a real need for more is a new
   ADR, not a silent allowance.
-- `run_for(faults=(...))` will need its guard loosened, not removed, when 0470 lands — no caller could
-  have relied on faults being silently accepted, because it never worked.
+- `run_for(faults=(...))` had its guard loosened, not removed, when the fault handles landed (ADR-0022) —
+  no caller could have relied on faults being silently accepted, because it never worked.
 - A predicate raising a `NaN`/`±inf`-adjacent bug is unrelated to this validation — it is `deadline`
   and `seconds` themselves (the primitives' own inputs) that are checked, not arbitrary values a
   predicate might compute internally.
@@ -623,7 +630,7 @@ timed faults should compose without one's cleanup undoing another's still-active
   time, so a message already delivered into the node's queue before `at` stays there, and the still-running
   task can go on consuming it — only what arrives *after* `at` is cut. Recovery/restart is out of scope:
   it needs a persistence/re-join contract the `Node` protocol does not have, and inventing one here would
-  be a second feature wearing this slice's name.
+  be a second feature wearing this feature's name.
 - **Fault effects are tracked in per-fault-id registries, not the existing single mutable slot.**
   `Transport._partition`/`heal()` (ADR-0016) is correct for one scenario-driven partition at a time but
   wrong for N independently-timed fault-scheduled partitions whose windows can overlap — reusing that slot
@@ -658,7 +665,7 @@ timed faults should compose without one's cleanup undoing another's still-active
   address, so two addresses nominally "in the same" listed group could still end up cut from each other.
 - **`world.partition()`/`world.net.partition()` keep their existing names, not renamed.** They are
   genuinely different (deferred/seed-timed handle-returning vs. immediate/scenario-timed, applied right
-  away), and `docs/api.md` has committed to both spellings since Phase 2/3 — a public repo's already-
+  away), and `docs/api.md` has committed to both spellings since before this change — a public repo's already-
   published surface. Mitigated with an explicit cross-reference in both docstrings rather than a rename
   (Vojtěch's explicit call, weighed against renaming one side to `schedule_partition`).
 - **`run_for` validates every fault in `faults` before committing any of them** (`Transport._validate_fault`
@@ -708,7 +715,7 @@ timed faults should compose without one's cleanup undoing another's still-active
   `world.net.partition()`/`heal()` running alongside a fault-scheduled one — proven directly (white-box)
   rather than only through statistical seed sweeps.
 - A crashed node's own task is not stopped; documented plainly rather than silently implied to be "gone"
-  in the OS sense. A future slice wanting real task cancellation needs `start` to learn about addresses
+  in the OS sense. A future change wanting real task cancellation needs `start` to learn about addresses
   first — a bigger change than this one.
 - `run_for(faults=[...])`'s public signature (`docs/api.md`) is now fully implemented; no further "design
   target" marker remains on the fault-handle surface.
@@ -824,25 +831,23 @@ read.
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the
   runtime tripwires of ADR-0008. Deferred: tripwires carry the guarantee; a static layer is an
-  ergonomics add to settle once Phase 3 is in use, not before.
+  ergonomics add to settle once the auditor is in wide use, not before.
 - **A `world.start()`-ed task can violate an `always()` invariant in the exact scheduling step after
   the scenario coroutine returns, uncaught.** `World._drive` stops evaluating invariant hooks the
   moment the scenario itself completes (documented on `always()`: "not during teardown"). A started
   task whose own next scheduled resumption is the one that would perform the violation races teardown's
   cancellation and wins, because that resumption was already in flight (scheduled via `call_soon`, not
-  awaiting any cancellable future) the instant `task.cancel()` is issued. Measured precisely (audit
-  0025): this is a **one-scheduling-step-wide race**, not a broad window — a task whose violation is two
+  awaiting any cancellable future) the instant `task.cancel()` is issued. Measured precisely: this is a **one-scheduling-step-wide race**, not a broad window — a task whose violation is two
   or more steps away is cleanly cancelled first (no violation occurs at all), and a task whose violation
   is due this step or earlier is still caught by the active hooks. Only the exact one-step coincidence
-  slips through. Found by a holistic pre-0.4.0 release audit, then re-measured and narrowed by audit
-  0025 after the original repro turned out not to demonstrate a violation at all (`result.error is None`
-  was checked, not whether the invariant actually broke). Pre-existing (identical on `v0.3.2` across the
-  full boundary, not just the one case first found), not introduced by any 0.4.0 slice. Deferred rather
-  than patched under release pressure: a correct fix needs its own design pass — how many further steps
-  (if any) should still be checked before teardown begins, and how that interacts with the original
-  reason invariants stop being checked at all (a node's own cancel handler mutating state must not
-  manufacture a false violation, ADR pending its own slice). Worth taking seriously despite the narrow
-  window: across a `check(seeds=N)` sweep where a node's own timing depends on seeded network latency,
+  slips through. The first reproduction did not actually demonstrate a violation (it checked that
+  `result.error is None`, not whether the invariant had broken), so the window was measured again before
+  it was described here. It is identical on `v0.3.2` across the full boundary, not just the one case
+  first found, and it was not introduced by 0.4.0. Deferred rather than patched under release
+  pressure: a correct fix needs its own design pass — how many further steps (if any) should still be
+  checked before teardown begins, and how that interacts with the original reason invariants stop being
+  checked at all (a node's own cancel handler mutating state must not manufacture a false violation).
+  Worth taking seriously despite the narrow window: across a `check(seeds=N)` sweep where a node's own timing depends on seeded network latency,
   the step at which it would misbehave shifts by seed, so the one-step coincidence only has to land once.
 
 *Resolved since the first draft:* **naming** — `seedloop` is adopted as the name (free on PyPI at the

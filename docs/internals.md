@@ -4,25 +4,24 @@ How the deterministic core is built, in enough detail to implement it and to def
 behaviour is in [api.md](api.md); the boundary is in [scope.md](scope.md); the *why* of each
 non-obvious choice is in [decisions.md](decisions.md). Vocabulary is fixed in [glossary.md](glossary.md).
 
-The Phase-1 core described here — the deterministic loop, the virtual clock and autojump, the seeded
-entropy primitives, their assembly into a `World` with `check`/`replay`, and the network with its faults
-(loss, duplication, partition, reliable channel), the invariant API (`world.always`), the
-non-determinism auditor (`audit=True`), the time-advancing primitives (`world.run_for`/`run_until`), and
-the seed-scheduled fault-handle constructors (`world.partition`/`slow_link`/`crash`, ADR-0022) — is
-implemented and tested. The load-bearing CPython facts below were checked against the target interpreter
-(CPython 3.13); where a claim depends on a version, it says so.
+It covers the deterministic loop, the virtual clock and autojump, the seeded entropy primitives, their
+assembly into a `World` with `check`/`replay`, the network with its faults (loss, duplication,
+partition, reliable channel), the invariant API (`world.always`), the non-determinism auditor
+(`audit=True`), the time-advancing primitives (`world.run_for`/`run_until`), and the seed-scheduled
+fault handles (`world.partition`/`slow_link`/`crash`, ADR-0022). The load-bearing CPython facts below
+were checked against the target interpreter (CPython 3.13); where a claim depends on a version, it says
+so.
 
 ## The loop and what it implements
 
-seedloop's loop is supplied through `asyncio`'s `loop_factory` — a callable returning the loop a run
-uses, accepted by both `asyncio.Runner(loop_factory=...)` and `asyncio.run(coro, loop_factory=...)`
-(verified present on 3.13). The user calls `asyncio.run`/`await` as normal; the factory swaps in the
-deterministic loop underneath, so user code never sees the change.
+`check` and `replay` create a fresh loop for every seed and drive it directly, so user code never calls
+`asyncio.run`; inside the scenario it awaits as usual and the standard `asyncio` API runs on the
+simulated loop. The loop is private: it is not a public extension point, and no factory is offered.
 
-In practice seedloop subclasses `asyncio.BaseEventLoop` and overrides only `_run_once` to drop the I/O
-poll (ADR-0013), inheriting asyncio's tested scheduling, `run_until_complete`, and Task/Future machinery
-unchanged. `BaseEventLoop` declares dozens of methods (≈55 public on 3.13), most of them real-I/O entry
-points; the effective surface that works is the slice `Task` and coroutine execution actually drive:
+seedloop subclasses `asyncio.BaseEventLoop` and overrides only `_run_once` to drop the I/O poll
+(ADR-0013), inheriting asyncio's tested scheduling and Task/Future machinery unchanged. `BaseEventLoop`
+declares dozens of methods (≈55 public on 3.13), most of them real-I/O entry points; the effective
+surface that works is the part `Task` and coroutine execution actually drive:
 
 - **Scheduling:** `call_soon`, `call_soon_threadsafe` (rejected — see boundary), `call_later`, `call_at`,
   `time`.
@@ -58,7 +57,7 @@ seedloop reuses CPython's ready queue and runs its own timer heap:
 
 The timer tie-break is the one ordering seedloop adds. The one nondeterministic seam it must *replace*
 is the I/O poll — and that is where the seed enters: the simulated network's delivery timing decides
-when tasks become ready, which is the lever that explores interleavings (Phase 2).
+when tasks become ready, which is the lever that explores interleavings.
 
 ## The step loop (replacing `select()`)
 

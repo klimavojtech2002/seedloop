@@ -24,7 +24,7 @@ must be controlled. `seedloop` controls these:
 
 Each source is drawn from its own sub-stream of the seed, not one shared stream, so adding a consumer
 does not perturb the others' timelines (ADR-0009). If your code stays inside this set, a failing run
-reduces to a seed you can replay forever — within a major version (ADR-0011).
+reduces to a seed you can replay — within a minor version (ADR-0011).
 
 **How the boundary is enforced, not just stated.** The same points where the World substitutes a seeded
 source are tripwires: under `check(..., audit=True)` an uncontrolled source — real `os.urandom`, real
@@ -101,8 +101,7 @@ The sweet spot is code where the *logic* holds the concurrency bugs and the I/O 
 - Resilience logic: retry, backoff, circuit breakers, rate limiters, timeouts.
 
 For this class of code — which is precisely where rare, partition-dependent bugs live and where
-reproduction is hardest — `seedloop` is exactly the right tool, and there is no equivalent in Python
-today.
+reproduction is hardest — `seedloop` is built for exactly this.
 
 ## What this is not good for
 

@@ -1,14 +1,13 @@
 # Contributing
 
-seedloop is a built, tested library; the planned roadmap (Phases 1 through 3, plus the ergonomics work
-that followed) is complete. The documentation under [docs/](docs/) is the design reference, and
+seedloop is a built, tested library. The documentation under [docs/](docs/) is the design reference, and
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes how a run works end to end. This file is how to
 work on the code.
 
 ## Requirements
 
-- CPython 3.12 or newer. seedloop attaches its loop through `asyncio`'s `loop_factory`, which those
-  versions support.
+- CPython 3.12 or newer, tested on 3.12 to 3.14. seedloop's loop builds on private parts of `asyncio`,
+  and only those versions are checked on every change.
 - A single-threaded target. seedloop tests `asyncio` logic against an abstract transport; real threads,
   `multiprocessing`, real sockets, and `uvloop` are out of scope by design (see [docs/scope.md](docs/scope.md)).
 

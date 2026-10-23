@@ -4,13 +4,13 @@ One name per concept, used consistently across the docs and the code. If a term 
 code ever drift, the code is wrong.
 
 - **Seed** — the integer that is a run's entire identity. The loop, clock, RNG, network, and fault
-  schedule are all derived from it; the same seed reproduces the same run (within a major version).
+  schedule are all derived from it; the same seed reproduces the same run (within a minor version).
 - **Run** — one execution of a scenario for one seed. A pure function of the seed.
 - **World** — the object holding everything for one run: the loop, virtual clock, seeded RNG, network
   port, and fault schedule. User code receives it and never constructs it.
 - **Scenario** — the user's async function `scenario(world) -> None` that builds nodes, states
   invariants, and advances time. The unit `check`/`replay` execute.
-- **Deterministic event loop** — seedloop's custom `asyncio` loop, attached via `loop_factory`, whose
+- **Deterministic event loop** — seedloop's custom `asyncio` loop, created for every run, whose
   scheduling is deterministic (faithful `call_soon` FIFO) and which never touches a real socket or clock;
   the seed drives I/O delivery timing, not callback order (ADR-0012).
 - **Virtual clock** — simulated monotonic time returned by `loop.time()`; it advances by autojump, not
