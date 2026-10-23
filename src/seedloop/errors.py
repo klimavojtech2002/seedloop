@@ -7,6 +7,8 @@ caught with a single class.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class SeedloopError(Exception):
     """Base class for every error seedloop raises."""
@@ -34,6 +36,9 @@ class InvariantError(SeedloopError):
     A continuous safety property (e.g. "at most one leader") that must hold throughout, checked
     after every step; the first step where it is false raises this, which ``check`` reports as the
     failure. Carries the invariant's ``name`` and the virtual ``time`` of the violation.
+
+    A subclass must keep the ``(name, time)`` constructor, or override ``__reduce__``, to stay
+    picklable.
     """
 
     def __init__(self, name: str, time: float) -> None:
@@ -41,13 +46,19 @@ class InvariantError(SeedloopError):
         self.name = name
         self.time = time
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        # The default reduce replays ``args`` (the message), which this constructor cannot take.
+        # Rebuild from the real arguments and restore ``__dict__``, which also carries any notes.
+        return (type(self), (self.name, self.time), self.__dict__)
+
 
 class EntropyLeakError(BoundaryError):
     """An uncontrolled entropy source was touched inside a simulated run.
 
     In audit mode the non-determinism auditor raises this when code reaches for real
     ``os.urandom``/``secrets``, real time, or the unseeded global ``random`` instead of the World's
-    seeded source (``docs/decisions.md`` ADR-0008). Carries the offending ``source``.
+    seeded source (``docs/decisions.md`` ADR-0008). Carries the offending ``source``. A subclass
+    must keep the ``(source)`` constructor, or override ``__reduce__``, to stay picklable.
     """
 
     def __init__(self, source: str) -> None:
@@ -56,6 +67,9 @@ class EntropyLeakError(BoundaryError):
             f"(world.rng) or the virtual clock — see docs/scope.md"
         )
         self.source = source
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (type(self), (self.source,), self.__dict__)
 
 
 class _UsageError(SeedloopError):
