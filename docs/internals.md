@@ -8,9 +8,8 @@ It covers the deterministic loop, the virtual clock and autojump, the seeded ent
 assembly into a `World` with `check`/`replay`, the network with its faults (loss, duplication,
 partition, reliable channel), the invariant API (`world.always`), the non-determinism auditor
 (`audit=True`), the time-advancing primitives (`world.run_for`/`run_until`), and the seed-scheduled
-fault handles (`world.partition`/`slow_link`/`crash`, ADR-0022). The load-bearing CPython facts below
-were checked against the target interpreter (CPython 3.13); where a claim depends on a version, it says
-so.
+fault handles (`world.partition`/`slow_link`/`crash`, ADR-0022). The CPython behaviour it relies on is
+that of CPython 3.13, tested on 3.12 to 3.14; where a claim depends on a version, it says so.
 
 ## The loop and what it implements
 
@@ -35,8 +34,8 @@ The real-I/O surface — `run_in_executor`/`call_soon_threadsafe` (threads), `so
 `create_connection`/`create_server`/`create_datagram_endpoint` (transports), subprocess and signal
 hooks — is **not** implemented as working transport. The entry points that could otherwise act are
 overridden to raise `BoundaryError` (ADR-0002); the rest inherit `BaseEventLoop`'s `NotImplementedError`.
-Either way nothing real runs — which is the whole reason a custom loop is tractable here: we implement
-the small cooperative core, not a real reactor.
+Either way nothing real runs — which is the whole reason a custom loop is tractable here: the
+library implements the small cooperative core, not a real reactor.
 
 ## Two structures, and what seedloop adds
 
@@ -138,8 +137,8 @@ per process (the very thing ADR-0010 pins) and would make the split itself nonde
 `os.urandom`, `secrets`, and `random.SystemRandom` must yield from the seed during a run. A subtlety
 worth knowing: shimming `os.urandom` alone is **not enough**. `random` binds the function at
 import time (`from os import urandom as _urandom`), and `secrets` draws through `random.SystemRandom`, so
-a later reassignment of `os.urandom` does not reach it. Verified: with only `os.urandom` patched,
-`secrets.token_bytes` still returned unshimmed bytes; patching `random._urandom` as well brought it under
+a later reassignment of `os.urandom` does not reach it: with only `os.urandom` patched,
+`secrets.token_bytes` still returns unshimmed bytes, and patching `random._urandom` as well brings it under
 control.
 
 So the shim, installed for the duration of a run and removed after, patches **both** `os.urandom` and
@@ -159,7 +158,7 @@ fixed *before* interpreter start, so it cannot be shimmed from inside a run.
 
 `check` and `replay` do not pin it (ADR-0015). A program whose own code depends on hash order calls
 `seedloop.ensure_hash_seed(seed)` at its entry point, which **re-execs the interpreter** with
-`PYTHONHASHSEED` set to a fixed value derived from the seed and carries on in the child. Verified: two child processes
+`PYTHONHASHSEED` set to a fixed value derived from the seed and carries on in the child. Two child processes
 launched with the same `PYTHONHASHSEED` hash identically; a different value differs. The re-exec is a
 one-time cost at the boundary and is invisible to user code. (The cleaner design keeps library code from
 *depending* on hash order at all; the pin is the backstop for user code that does.)

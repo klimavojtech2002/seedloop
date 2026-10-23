@@ -68,7 +68,7 @@ pytest -m meta                              # each named change to a copy of src
 pytest -m differential                      # generated programs must behave like the previous release
 ```
 
-The corpus pins well over a hundred scenarios, each at several seeds, instead of one scenario at
+The corpus pins well over a hundred scenarios, most at one to three seeds, instead of one scenario at
 one seed. Each change listed in `tests/test_corpus.py` is proven to make it fail. The differential
 test compares generated programs against the previously released wheel in a separate process; a difference is a behaviour
 change and has to be declared in `tests/test_differential.py`. Tests that could hang run through

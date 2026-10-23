@@ -30,8 +30,9 @@ pip install seedloop
 Write your protocol against an abstract transport ([sans-I/O](https://sans-io.readthedocs.io/)), and
 `seedloop` runs it inside a world it fully controls. The example below is
 [`examples/quickstart.py`](examples/quickstart.py) and runs as written: a client retries a request
-after 30 ms, the simulated network sometimes delays the original by longer, and a server with no
-memory of what it has handled applies the request twice.
+after 30 ms, the simulated network can take up to 40 ms for a request and its acknowledgement
+together, so on some seeds the client retries while the acknowledgement is still on its way, and a
+server with no memory of what it has handled applies the request twice.
 
 ```python
 from __future__ import annotations
@@ -163,8 +164,7 @@ demo. The 4 gates (lint, format, types, tests) run green on Linux/macOS/Windows 
 
 One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
 `always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario
-coroutine returns and before teardown cancels it. Pre-existing since `v0.3.2`, not introduced by
-0.4.0. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
+coroutine returns and before teardown cancels it. Present since `v0.3.2`. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
 
 Full API in [docs/api.md](docs/api.md), design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

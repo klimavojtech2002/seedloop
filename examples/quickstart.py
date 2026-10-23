@@ -1,9 +1,9 @@
 """Find a retry bug with a seed sweep, then replay it.
 
 A client sends a request and retries if no acknowledgement arrives within 30 ms. The simulated
-network delays each message by 1 to 20 ms, so on some seeds the original request is still in flight
-when the retry goes out, and a server that does not remember what it has handled applies the request
-twice.
+network delays each message by 1 to 20 ms, so the request and its acknowledgement can take up to
+40 ms together. On some seeds the acknowledgement is still in flight when the client retries, and a
+server that does not remember what it has handled applies the request twice.
 
 Run it:  ``python examples/quickstart.py``
 """

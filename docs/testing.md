@@ -45,7 +45,7 @@ change.
   `tests/data/replay_golden.txt`) records one canonical scenario's exact events at a fixed seed, checked
   byte-for-byte on the CI matrix. Where replay-equivalence proves stability *within a run*, the golden
   proves it *across commits*: a timeline-affecting change (ADR-0011) fails CI instead of landing silently.
-- **Corpus pin** — `scripts/pin_corpus.py` runs well over a hundred small scenarios, each at several seeds (cancellation, timeouts,
+- **Corpus pin** — `scripts/pin_corpus.py` runs well over a hundred small scenarios, most at one to three seeds (cancellation, timeouts,
   task groups, deadlocks, faults) and compares their timelines with `tests/data/corpus_golden.txt`.
   Where the replay-stability pin covers one scenario, the corpus covers the behaviours a change to the
   loop or the drive is most likely to disturb.

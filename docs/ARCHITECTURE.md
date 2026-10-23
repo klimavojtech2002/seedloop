@@ -52,7 +52,7 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
 ```
                          ┌──────────────────────────────────────────────┐
                          │                  Controller                   │
-                         │   seed sweep · invariants · record / replay   │
+                         │   seed sweep · invariants · replay            │
                          └───────────────────────┬──────────────────────┘
                                                  │ runs one seed
                                                  ▼
@@ -75,9 +75,9 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
 ```
 
 - **Controller** — the outer driver. Runs a scenario across many seeds, checks the user's invariants
-  after each run, and on a failure reports the seed and supports replaying it. May use
-  [Hypothesis](https://hypothesis.readthedocs.io/) as the seed-generation and shrinking engine rather
-  than reinventing it.
+  after each run, and on a failure reports the seed and supports replaying it. The optional
+  [Hypothesis](https://hypothesis.readthedocs.io/) extra can drive seed exploration instead of a plain
+  sweep (ADR-0020).
 - **World** — everything for a single deterministic run, all derived from one seed: the loop, the
   clock, the RNG, the network, the fault schedule. The same seed yields the same World, hence the same
   timeline.
