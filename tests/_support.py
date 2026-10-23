@@ -123,20 +123,28 @@ def pid_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
-    return not _is_zombie(pid)  # a killed process nobody has waited for still answers signal 0
+    return _is_running(pid)  # a killed process nobody has waited for still answers signal 0
 
 
-def _is_zombie(pid: int) -> bool:
+def _is_running(pid: int) -> bool:
+    """Whether the process is running: not a zombie, and not gone since the signal check.
+
+    A killed process is a zombie for a moment before its parent (or init) reaps it, so it can
+    vanish between the signal check and the read of its state. That is "not running", not "alive".
+    """
     try:  # Linux
         stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        if Path("/proc/self").exists():
+            return False  # procfs is there and the process is not: it has been reaped
     except OSError:
         pass
     else:
-        return stat.rsplit(")", 1)[1].split()[0] == "Z"
+        return stat.rsplit(")", 1)[1].split()[0] != "Z"
     listing = subprocess.run(  # macOS and other BSDs
         ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False
-    ).stdout
-    return listing.strip().startswith("Z")
+    ).stdout.strip()
+    return bool(listing) and not listing.startswith("Z")  # no output: the process is gone
 
 
 @dataclass(frozen=True)
