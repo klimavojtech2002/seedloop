@@ -161,7 +161,14 @@ def test_a_grandchild_that_holds_the_pipes_after_the_child_exited_is_killed() ->
     deadline = time.monotonic() + 15
     while pid_alive(grandchild) and time.monotonic() < deadline:
         time.sleep(0.1)
-    assert not pid_alive(grandchild), "the orphaned grandchild outlived the cap"
+    if pid_alive(grandchild):
+        import subprocess as sp
+
+        info = sp.run(["ps", "-eo", "pid,ppid,pgid,sid,stat,etimes,cmd"], capture_output=True, text=True).stdout
+        status = Path(f"/proc/{grandchild}/status").read_text(encoding="utf-8")
+        raise AssertionError(f"DIAG grandchild={grandchild}
+{status}
+{info}")
 
 
 @pytest.mark.meta
