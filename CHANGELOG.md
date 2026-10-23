@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `examples/quickstart.py`: a runnable example that finds a retry bug with a seed sweep, replays it, and
+  shows the fixed version passing. The README shows it as written, and the test suite runs it.
+
 ### Fixed
 - `check` and `replay` called from inside a running event loop used to spin forever; they now raise
   an error before running anything, and it is not reported as a failing seed.
@@ -28,6 +32,10 @@ All notable changes to this project are documented here. The format follows
 ### Changed
 - The seeded `os.urandom`/`secrets` source and the audit tripwires now apply to the thread that started
   the run. A thread the scenario starts itself is no longer seeded or audited.
+- The replay guarantee is stated per minor version (`0.4.x`) instead of per major version, which meant
+  nothing for `0.x`, and it says what it does not cover: the interpreter, and the C-math-based draws
+  (`gauss`, `expovariate`) across operating systems. The `loop_factory` attach mechanism that earlier
+  docs described was never used and is no longer mentioned.
 
 ## [0.4.0] — 2026-08-09
 
@@ -71,7 +79,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [0.3.1] — 2026-06-30
 
-Determinism and boundary-fidelity fixes found by an independent audit. All three were silent: a
+Determinism and boundary-fidelity fixes found in a review. All three were silent: a
 clean run looked correct while a guarantee leaked.
 
 ### Fixed
@@ -92,7 +100,7 @@ clean run looked correct while a guarantee leaked.
 
 ## [0.3.0] — 2026-06-28
 
-Phase 3: ergonomics and the worked proof — the invariant API, the Raft demo, and the enforced boundary.
+Ergonomics and the worked proof — the invariant API, the Raft demo, and the enforced boundary.
 
 ### Added
 - Invariant API: `world.always(predicate, *, name)` registers a continuous safety property checked after
@@ -109,7 +117,7 @@ Phase 3: ergonomics and the worked proof — the invariant API, the Raft demo, a
 
 ## [0.2.0] — 2026-06-28
 
-Phase 2: the simulated network and fault injection — the deterministic-simulation-testing payoff.
+The simulated network and fault injection — the deterministic-simulation-testing payoff.
 
 ### Added
 - Simulated datagram network (`world.net`): nodes `bind` an address and exchange messages through an
@@ -121,12 +129,12 @@ Phase 2: the simulated network and fault injection — the deterministic-simulat
 
 ## [0.1.0] — 2026-06-26
 
-Phase 1: the deterministic core — reproducible, instant `asyncio` runs.
+The deterministic core — reproducible, instant `asyncio` runs.
 
 ### Added
 - Project skeleton: packaging (`pyproject.toml`), the typed `seedloop` package, a test scaffold, and CI
   running the lint, format, type, and test gates across Linux, Windows, and macOS on CPython 3.12 and 3.13.
-- Deterministic event loop core: a single-threaded `asyncio` loop (attached via `loop_factory`) that
+- Deterministic event loop core: a single-threaded `asyncio` loop that
   drains `call_soon` in faithful FIFO order and rejects real I/O, threads, and subprocesses, with a
   deadlock guard for a quiescent run.
 - Virtual clock with autojump: `loop.time()` advances only by jumping to the next scheduled timer, so
@@ -138,3 +146,11 @@ Phase 1: the deterministic core — reproducible, instant `asyncio` runs.
 - The public API: `World`, `seedloop.check(scenario, seeds=...)`, and `seedloop.replay(scenario,
   seed=...)`. A scenario runs against a seeded `World` (its `rng`, virtual clock, and timeline); `check`
   sweeps seeds and reports the first failing one; `replay` reproduces that seed's run identically.
+
+[Unreleased]: https://github.com/klimavojtech2002/seedloop/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/klimavojtech2002/seedloop/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/klimavojtech2002/seedloop/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/klimavojtech2002/seedloop/releases/tag/v0.1.0

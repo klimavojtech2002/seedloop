@@ -1,12 +1,11 @@
 # Public API
 
-The surface a user writes against. This is the design target for Phases 1–3. **Implemented now (Phase
-1):** `World` (its `seed`, `rng`, `now()`, `start()`, `record()`, `timeline`), `check`, `replay`,
-`CheckResult`, `ensure_hash_seed`, and the error types. **Phase 2:** the network port
-(`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss, duplication,
-partition/heal, and the reliable channel. **Phase 3:** the invariant API (`world.always`,
-`InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`). **Also
-implemented:** the time-advancing primitives `world.run_for(seconds=...)` and
+The surface a user writes against, all of it implemented: `World` (its `seed`, `rng`, `now()`,
+`start()`, `record()`, `timeline`), `check`, `replay`, `CheckResult`, `ensure_hash_seed`, and the error
+types; the network port (`world.net`/`Transport`/`Endpoint`) with datagram delivery, reordering, loss,
+duplication, partition/heal, and the reliable channel; the invariant API (`world.always`,
+`InvariantError`) and the non-determinism auditor (`check(audit=True)` / `audit_mode`); the
+time-advancing primitives `world.run_for(seconds=...)` and
 `world.run_until(predicate, deadline=...)`, and the seed-scheduled fault handles
 (`world.partition()`/`slow_link()`/`crash()`) consumed by `run_for(faults=[...])` (ADR-0022).
 The shape follows the boundary in [scope.md](scope.md) and the decisions in
@@ -77,12 +76,17 @@ def ensure_hash_seed(root_seed: int) -> None: ...
   those seeds. Each run is built from its seed alone (loop, clock, RNG, network, faults). The first seed
   whose run raises — an `assert`, a `SeedloopError`, or any exception from user code — is the failure.
   Calling `check` or `replay` from inside a running event loop is a usage error, raised at once
-  and never reported as a failing seed.
+  and never reported as a failing seed. To run a sweep from async code, hand it to a worker thread:
+  `await asyncio.to_thread(seedloop.check, scenario, seeds=...)`. If more than one thing goes wrong in
+  a run (an invariant fails and a node's cancel handler then raises, say), the first failure is the one
+  reported and the others are attached to it as notes (`__notes__`); a `KeyboardInterrupt` or
+  `SystemExit` is never swallowed or replaced.
   With `on_failure="raise"` (default) `check` re-raises it, tagged with the seed; with `"return"` it
-  stops and returns the result for programmatic use. Phase 3 routes seed generation and shrinking through
-  Hypothesis (ADR-0004), so the reported seed is a *minimal* failing case where shrinking applies.
+  stops and returns the result for programmatic use. With the optional Hypothesis extra, seed generation
+  and shrinking go through Hypothesis (ADR-0004), so the reported seed is a *minimal* failing case
+  where shrinking applies.
 - **`replay`** rebuilds the exact World for one seed and runs it once. Same seed → same timeline → same
-  outcome, within a major version (ADR-0011).
+  outcome, within a minor version (ADR-0011).
 - **`ensure_hash_seed`** pins `PYTHONHASHSEED` for the process by re-running the interpreter, for code
   that depends on `set`/`dict` iteration order. `check`/`replay` do not call it (re-execing a test runner
   is hostile); a user invokes it at their entry point before `check` (ADR-0015).
@@ -105,7 +109,7 @@ class World:
     seed: int  # this run's identity
     rng: random.Random  # seeded RNG for user code — use this, never the global random
 
-    # --- implemented (Phase 1) ---
+    # --- core ---
     def now(self) -> float: ...  # current virtual time, seconds
     def start(
         self, *nodes: Node
@@ -116,10 +120,10 @@ class World:
 
     timeline: tuple[object, ...]  # read-only snapshot of recorded (virtual_time, event) pairs
 
-    # --- implemented (Phase 2: datagram + faults) ---
+    # --- network and faults ---
     net: Transport  # the simulated network (see below): delivery, loss/duplicate, partition, reliable
 
-    # --- implemented (Phase 3) ---
+    # --- invariants ---
     def always(
         self, predicate: Callable[[], bool], *, name: str
     ) -> None: ...  # a continuous safety property
@@ -290,12 +294,19 @@ implemented; `EntropyLeakError` is raised by the non-determinism auditor under `
 
 ## Replay stability
 
-Within a **major version**, a recorded seed reproduces the same timeline and outcome — this is the
-contract `replay` rests on. It is enforced two ways: replay-equivalence tests prove a seed is stable
+With the same seed and the same **minor version**, a run reproduces the same timeline and outcome — this
+is the contract `replay` rests on. It is enforced two ways: replay-equivalence tests prove a seed is stable
 within a run, and a committed **golden timeline** (`scripts/pin_replay.py`, checked on the CI matrix)
 fails on any silent drift of one canonical scenario versus the pinned commit (see
-[testing.md](testing.md)). **Across major versions it is not guaranteed:** a change to scheduling, the
+[testing.md](testing.md)). **Across minor versions it is not guaranteed:** a change to scheduling, the
 fault model, or entropy derivation can move what a seed produces, and the changelog calls out any such
-change. The hierarchical seed-splitting of ADR-0009 is what keeps a seed stable under ordinary
-intra-version refactors. Practical consequence: a seed you keep in a regression test is valid for the
-major version you found it on; re-pin it after a major upgrade.
+change; a patch release keeps it unless its entry says a bug fix changed an outcome. The hierarchical
+seed-splitting of ADR-0009 is what keeps a seed stable under ordinary refactors. Practical consequence:
+a seed you keep in a regression test is valid for the minor version you found it on; re-pin it after
+a minor upgrade.
+
+It is a statement about seedloop, not about CPython. The golden timeline and the scenario corpus are
+checked on CPython 3.12 to 3.14 in every CI run, and the `random` functions seedloop draws from gave
+identical bytes on 3.9, 3.11 and 3.13 when measured, but the interpreter does not promise it. Draws you
+make yourself through functions that call the C math library (`gauss`, `expovariate`) are not promised
+to match across operating systems.

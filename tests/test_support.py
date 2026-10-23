@@ -71,11 +71,12 @@ def test_run_script_passes_arguments(tmp_path: Path) -> None:
 
 
 # Files that legitimately name the source tree: the helper that copies it, the differential test
-# (its candidate), the packaging test (it builds an archive from a copy of the project and imports
+# (its candidate), the packaging and docs tests (they read or copy the project's files and import
 # nothing from it), the toy project of the harness tests, and this guard.
 _MAY_NAME_THE_SOURCE_TREE = {
     "_support.py",
     "test_differential.py",
+    "test_docs.py",
     "test_packaging.py",
     "test_mutation_sweep.py",
     "test_support.py",
