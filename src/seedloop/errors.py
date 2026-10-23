@@ -7,6 +7,8 @@ caught with a single class.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class SeedloopError(Exception):
     """Base class for every error seedloop raises."""
@@ -41,6 +43,11 @@ class InvariantError(SeedloopError):
         self.name = name
         self.time = time
 
+    def __reduce__(self) -> tuple[Any, ...]:
+        # The default reduce replays ``args`` (the message), which this constructor cannot take.
+        # Rebuild from the real arguments and restore ``__dict__``, which also carries any notes.
+        return (type(self), (self.name, self.time), self.__dict__)
+
 
 class EntropyLeakError(BoundaryError):
     """An uncontrolled entropy source was touched inside a simulated run.
@@ -56,6 +63,9 @@ class EntropyLeakError(BoundaryError):
             f"(world.rng) or the virtual clock — see docs/scope.md"
         )
         self.source = source
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return (type(self), (self.source,), self.__dict__)
 
 
 class _UsageError(SeedloopError):
