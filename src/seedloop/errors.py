@@ -56,3 +56,7 @@ class EntropyLeakError(BoundaryError):
             f"(world.rng) or the virtual clock — see docs/scope.md"
         )
         self.source = source
+
+
+class _UsageError(SeedloopError):
+    """Misuse of the API (not a failing seed): check/replay re-raise it untagged."""

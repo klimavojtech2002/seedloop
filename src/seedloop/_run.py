@@ -13,13 +13,16 @@ rests on library code never depending on hash order; a user whose own code does 
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from seedloop._audit import audit_mode
 from seedloop._entropy import csprng_shim, substream
-from seedloop._world import World
+from seedloop._world import _RUNNING_LOOP_MESSAGE, World
+from seedloop.errors import _UsageError
 
 Scenario = Callable[[World], Awaitable[None]]
 
@@ -43,10 +46,18 @@ def _run_one(scenario: Scenario, seed: int, *, audit: bool = False) -> Sequence[
     seeded or run, so a leak fails on this seed (ADR-0008).
     """
     world = World(seed)
-    context = audit_mode() if audit else csprng_shim(substream(seed, "csprng"))
-    with context:
-        world._drive(scenario(world))
+    try:
+        context = audit_mode() if audit else csprng_shim(substream(seed, "csprng"))
+        with context:
+            world._drive(scenario(world))
+    finally:
+        world._close()
     return world.timeline
+
+
+def _preflight() -> None:
+    if asyncio.events._get_running_loop() is not None:
+        raise _UsageError(_RUNNING_LOOP_MESSAGE)
 
 
 def check(
@@ -64,16 +75,22 @@ def check(
     ``"return"`` the sweep stops and returns the :class:`CheckResult`. With ``audit=True`` the
     non-determinism auditor runs each seed: an uncontrolled entropy source fails it (ADR-0008).
     """
+    _preflight()
     seed_iter: Iterable[int] = range(seeds) if isinstance(seeds, int) else seeds
     checked = 0
     for seed in seed_iter:
         checked += 1
         try:
             _run_one(scenario, seed, audit=audit)
+        except _UsageError:
+            raise  # misuse, not a failing seed: untagged, never a CheckResult
         except Exception as error:
             # Only a scenario *failure* is caught; KeyboardInterrupt/SystemExit propagate so a
             # long sweep stays abortable (and is never mis-tagged as a failing seed).
-            error.add_note(f"seedloop: failing seed={seed} (replay with seedloop.replay)")
+            with contextlib.suppress(
+                Exception
+            ):  # an error that takes no notes is still the failure
+                error.add_note(f"seedloop: failing seed={seed} (replay with seedloop.replay)")
             if on_failure == "raise":
                 raise
             return CheckResult(checked=checked, failing_seed=seed, error=error)
@@ -85,4 +102,5 @@ def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None:
 
     ``audit=True`` reproduces the run under the non-determinism auditor (ADR-0008).
     """
+    _preflight()
     _run_one(scenario, seed, audit=audit)

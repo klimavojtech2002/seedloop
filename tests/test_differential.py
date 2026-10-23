@@ -4,7 +4,7 @@ The oracle is the previously released wheel (``tests/data/oracle_version.txt``),
 imported in a separate process, so it is a different implementation from the one under test, not
 a copy of it running on new code. A program is a generated scenario (``_programs.py``); both
 builds run it and print the outcome, the number of events and a digest of the full timeline. Any
-difference is a behavioural change and must be listed in ``DECLARED`` with the reason, or it
+difference is a behavioural change and must match a rule in ``DECLARED`` with the reason, or it
 fails.
 
 Opt-in (``pytest -m differential``): it needs the released wheel, which is downloaded on first
@@ -28,6 +28,7 @@ from typing import NoReturn
 
 import pytest
 
+from _programs import generate, kinds
 from _support import (
     DROPPED_SETTLE_STEP,
     REVERSE_CANCEL_ORDER,
@@ -44,9 +45,46 @@ ORACLE_VERSION = (
     (ROOT / "tests" / "data" / "oracle_version.txt").read_text(encoding="utf-8").strip()
 )
 
-# Differences that are intended, by program id: ``{12: "why this program legitimately differs"}``.
-# Empty while the code under test is meant to behave exactly like the oracle.
-DECLARED: dict[int, str] = {}
+
+def _oracle_hid_the_real_failure(program: int, old: str, new: str) -> bool:
+    # 0.4.0 read a started task's exception while that task was still pending (a task spawned
+    # during teardown), so ``InvalidStateError`` replaced the run's real outcome. The timeline is
+    # the same; only the outcome differs.
+    return (
+        old.split()[0] == "InvalidStateError"
+        and new.split()[0] != "InvalidStateError"
+        and old.split()[1:] == new.split()[1:]
+    )
+
+
+def _first_failure_kept(program: int, old: str, new: str) -> bool:
+    # A run ended by more than one failure: a user loop.stop(), a check firing in the last steps, a
+    # node or scenario error, or an error while tearing down. 0.4.0 let a later one replace the
+    # first and cut teardown short; now the first is kept and the later ones are notes. Which type
+    # is reported therefore changes, and the timeline can differ too (the cut-short teardown ran
+    # other steps), so it is not compared. Both builds must still fail, with different errors.
+    kept = {"loop_stop", "invariant_steps"} & kinds(generate(program))
+    heads = {old.split()[0], new.split()[0]}
+    # Only the errors a generated program can raise on purpose: an unrelated type (a TypeError, an
+    # AttributeError) is a regression, never an intended difference.
+    failed = heads <= {"InvariantError", "RuntimeError", "ValueError", "DeadlockError"}
+    # The same type is accepted only for a stop, which both builds report; what differs is the
+    # teardown that 0.4.0 used to cut short.
+    return (
+        bool(kept)
+        and failed
+        and (len(heads) == 2 or (heads == {"RuntimeError"} and "loop_stop" in kept))
+    )
+
+
+# Differences that are intended: a reason, and a test on the (oracle, candidate) result lines.
+DECLARED = [
+    ("InvalidStateError hid the real outcome in 0.4.0", _oracle_hid_the_real_failure),
+    (
+        "the first failure is kept when several failures end a run",
+        _first_failure_kept,
+    ),
+]
 
 PROGRAMS = int(os.environ.get("SEEDLOOP_DIFF_PROGRAMS", "60"))
 START = int(os.environ.get("SEEDLOOP_DIFF_START", "0"))
@@ -148,7 +186,7 @@ def _differences(
 
 def test_the_candidate_behaves_like_the_previous_release(oracle: Path) -> None:
     differences = _differences(oracle, ROOT / "src", range(START, START + PROGRAMS))
-    unexpected = [d for d in differences if d[0] not in DECLARED]
+    unexpected = [d for d in differences if not any(rule(*d) for _, rule in DECLARED)]
     report = "\n".join(
         f"program {p}: oracle {o!r} vs candidate {n!r}" for p, o, n in unexpected[:5]
     )

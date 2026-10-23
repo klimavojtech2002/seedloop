@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import heapq
+import math
 from collections.abc import Callable
 from typing import Any, NoReturn
 
@@ -45,6 +46,47 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         # so a soft failure is never silently erased by a hard one in the same step — it is attached
         # to whatever hard failure does end the run as a note instead (ADR-0021).
         self._sl_after_step_hooks: list[Callable[[], Exception | None]] = []
+        # Step-driven completion (ADR-0023): the loop stops one step after the watched task is done,
+        # where asyncio's own done-callback stop would land, without registering any callback that
+        # could outlive the call and stop an unrelated drive.
+        self._sl_watch: asyncio.Future[Any] | None = None
+        self._sl_stop_in: int | None = None  # steps left once the watched future is done
+        self._sl_settle: Callable[[], None] | None = None
+
+    def run_until_done(
+        self, fut: asyncio.Future[Any], settle: Callable[[], None] | None = None
+    ) -> None:
+        """Step the loop until ``fut`` is done, then run exactly two more steps.
+
+        The first extra step is where asyncio's own ``run_until_complete`` stops; the second lets
+        work that the first one made ready (a spawned task's first step) run before teardown.
+        Neither autojumps the clock (a done-callback is always ready). ``settle`` runs between the
+        two; the drive uses it to clear the after-step hooks. Never raises ``fut``'s outcome;
+        registers no callback on it, so nothing can fire later and stop an unrelated drive. If user
+        code calls ``loop.stop()`` it returns early, ``fut`` possibly not done; the caller decides
+        what that means.
+        """
+        self._sl_watch, self._sl_stop_in, self._sl_settle = fut, None, settle
+        try:
+            self.run_forever()
+            if fut.done() and self._sl_stop_in in (1, 2):
+                # User code called loop.stop() on or right after the step that finished ``fut``, so
+                # the loop ended before its own stop steps. One more step still runs (both
+                # completion callbacks would be ready then), as it always has.
+                if self._sl_stop_in == 2 and settle is not None:
+                    settle()
+                self._sl_stop_in = 1
+                self.run_forever()
+        finally:
+            self._sl_watch, self._sl_stop_in, self._sl_settle = None, None, None
+
+    def run_one_more_step(self, fut: asyncio.Future[Any]) -> None:
+        """Run a single step, without advancing the clock (used after a check ended a run)."""
+        self._sl_watch, self._sl_stop_in, self._sl_settle = fut, 1, None
+        try:
+            self.run_forever()
+        finally:
+            self._sl_watch, self._sl_stop_in, self._sl_settle = None, None, None
 
     def time(self) -> float:
         return self._sl_time
@@ -63,6 +105,8 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         self, when: float, callback: Any, *args: Any, context: Any = None
     ) -> asyncio.TimerHandle:
         self._check_closed()  # type: ignore[attr-defined]  # BaseEventLoop guard, not in the stubs
+        if math.isnan(when):
+            raise ValueError("Invalid delay: NaN (not a number)")
         timer = asyncio.TimerHandle(when, callback, args, self, context)
         heapq.heappush(self._sl_timers, (when, self._sl_timer_seq, timer))
         self._sl_timer_seq += 1
@@ -82,7 +126,7 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         # nothing is ready, advance virtual time to the next timer (autojump); then promote every
         # timer now due and run the ready batch in faithful FIFO order (ADR-0012).
         ready: Any = self._ready  # type: ignore[attr-defined]  # BaseEventLoop's ready deque
-        if not ready:
+        if not ready and self._sl_stop_in is None:  # the two stop steps never autojump
             self._purge_cancelled_timers()
             if self._sl_timers:
                 self._sl_time = max(self._sl_time, self._sl_timers[0][0])  # jump forward only
@@ -117,6 +161,17 @@ class DeterministicLoop(asyncio.BaseEventLoop):
             for note in notes:
                 first.add_note(f"another after-step check also failed this step: {note!r}")
             raise first
+        watch = self._sl_watch
+        if watch is not None:
+            if self._sl_stop_in is None:
+                if watch.done():
+                    self._sl_stop_in = 2
+            else:
+                self._sl_stop_in -= 1
+                if self._sl_stop_in == 1 and self._sl_settle is not None:
+                    self._sl_settle()
+                if self._sl_stop_in == 0:
+                    self.stop()
 
     def _fire_due_timers(self) -> None:
         # Promote every timer whose deadline has arrived (<= the clock) to the ready queue.

@@ -26,6 +26,8 @@ except ImportError as exc:  # pragma: no cover - the bare-env path is covered by
         "pip install 'seedloop[hypothesis]'"
     ) from exc
 
+from seedloop.errors import _UsageError
+
 __all__ = ["given_seed", "seeds"]
 
 _TestFn = Callable[..., None]
@@ -55,6 +57,8 @@ def given_seed(**input_strategies: st.SearchStrategy[Any]) -> Callable[[_TestFn]
         def annotated(*args: Any, seed: int, **inputs: Any) -> None:
             try:
                 test(*args, seed=seed, **inputs)
+            except _UsageError:
+                raise  # misuse, not a failing example: no reproduction note
             except Exception as exc:
                 # Annotate a scenario failure and re-raise it unchanged. Only Exception is caught,
                 # so KeyboardInterrupt/SystemExit still abort a long exploration (as in check).
