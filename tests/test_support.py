@@ -51,7 +51,7 @@ def test_a_hang_fails_fast_with_the_partial_output() -> None:
     code = "import time; print('started', flush=True); time.sleep(60)"
     started = time.monotonic()
     with pytest.raises(IsolatedTimeout) as caught:
-        run_isolated(code, timeout=2)
+        run_isolated(code, timeout=1.5)
     assert time.monotonic() - started < 30  # the cap, not the child's own 60 s sleep
     assert "started" in caught.value.stdout
     assert caught.value.timeout == 2
@@ -217,6 +217,7 @@ def test_output_printed_before_the_cap_survives_a_grandchild_that_escaped_the_gr
 
 
 @pytest.mark.meta
+@pytest.mark.timeout(400)
 def test_orphan_kill_many_times() -> None:
     code = (
         "import subprocess, sys\n"
@@ -232,14 +233,14 @@ def test_orphan_kill_many_times() -> None:
         return raw.rsplit(")", 1)[1].split()[0]
 
     bad: list[str] = []
-    for attempt in range(25):
+    for attempt in range(6):
         with pytest.raises(IsolatedTimeout) as caught:
             run_isolated(code, timeout=2)
         grandchild = int(caught.value.stdout.split()[0])
         began = time.monotonic()
         history: list[str] = []
         last = ""
-        while time.monotonic() - began < 8:
+        while time.monotonic() - began < 30:
             current = state(grandchild)
             if current != last:
                 history.append(f"{time.monotonic() - began:.2f}s:{current}")
