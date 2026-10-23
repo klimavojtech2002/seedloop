@@ -148,6 +148,10 @@ So the shim, installed for the duration of a run and removed after, patches **bo
 `EntropyLeakError`, since CSPRNG use usually means the code wants real unpredictability — exactly what a
 deterministic run cannot give.
 
+The patches are process-wide, so they are guarded: runs on different threads take turns on a lock, the
+shim and the tripwires act only on the thread that started the run, and a name is put back only if it
+is still the one the run installed (ADR-0026).
+
 ## Pinning hash order
 
 `PYTHONHASHSEED` randomizes `str`/`bytes` hashing, hence `set`/`dict` iteration order, per process. Any

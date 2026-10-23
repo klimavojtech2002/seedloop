@@ -878,9 +878,24 @@ def test_sleeping_cleanup_works_after_a_check_ended_the_run_in_a_stop_step() -> 
     assert log == ["cleaned"]
 
 
-def test_an_unstamped_task_is_cancelled_before_the_scenario_task() -> None:
+class _OrderedSet(list):  # type: ignore[type-arg]
+    """A list that iterates in the order given, standing in for the set ``all_tasks`` returns."""
+
+
+def test_an_unstamped_task_is_cancelled_before_the_scenario_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # A task built straight from asyncio.Task has no creation stamp; it sorts before every stamped
-    # task, so teardown cancels it first and the order stays the same from run to run.
+    # task, so teardown cancels it first and the order stays the same from run to run. The set
+    # asyncio returns is handed over in the worst order (stamped scenario task first), so only the
+    # sort key can put the unstamped tasks ahead.
+    real_all_tasks = asyncio.all_tasks
+
+    def worst_order(loop: asyncio.AbstractEventLoop | None = None) -> set[asyncio.Task[object]]:
+        ordered = sorted(real_all_tasks(loop), key=lambda t: getattr(t, "_sl_seq", 10**9))
+        return _OrderedSet(ordered)  # type: ignore[return-value]
+
+    monkeypatch.setattr(asyncio, "all_tasks", worst_order)
     keep: list[asyncio.Future[None]] = []
     worlds: list[World] = []
 
@@ -897,7 +912,7 @@ def test_an_unstamped_task_is_cancelled_before_the_scenario_task() -> None:
                 world.record("unstamped-cancelled")
                 raise
 
-        for _ in range(30):  # enough that the order is not an accident of set iteration
+        for _ in range(3):
             keep.append(asyncio.Task(unstamped(), loop=loop))
 
         async def flip() -> None:
@@ -919,7 +934,7 @@ def test_an_unstamped_task_is_cancelled_before_the_scenario_task() -> None:
     with pytest.raises(InvariantError):
         _run_one(scenario, 0)
     code_events = [event[1] for event in worlds[0].timeline]  # type: ignore[index]
-    assert code_events == ["main-cancelled-1", *["unstamped-cancelled"] * 30, "main-cancelled-2"]
+    assert code_events == ["main-cancelled-1", *["unstamped-cancelled"] * 3, "main-cancelled-2"]
 
 
 def test_a_check_failing_in_the_second_stop_step_ends_the_run() -> None:

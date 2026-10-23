@@ -67,7 +67,7 @@ def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None: ...
 
 
 @contextmanager
-def audit_mode() -> Iterator[None]: ...  # trip on uncontrolled entropy for the duration
+def audit_mode() -> Iterator[None]: ...  # trip on uncontrolled entropy; this thread only (ADR-0026)
 
 
 def ensure_hash_seed(root_seed: int) -> None: ...

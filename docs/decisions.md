@@ -777,6 +777,49 @@ evidence for the equality above.
 
 ---
 
+## ADR-0026 — Process-wide patches are serialized, thread-scoped and restored only if still ours
+
+**Status:** Accepted
+
+**Context.** The CSPRNG shim and audit mode replace `os.urandom`, `random._urandom`, the `time.*` and
+`random.*` entry points and `threading.Thread.start` for the whole process. Two runs on different
+threads could overlap: the second saved the first run's wrapper as the "original", so when the first
+finished and the second restored its saved value, `os.urandom` stayed patched for good. Reading the
+originals before taking any lock had the same effect. The tripwires were also process-wide, so a check
+run under `asyncio.to_thread(..., audit=True)` made the host's own event loop raise on its first clock
+read.
+
+**Decision.**
+- **Runs that patch the process take a blocking, re-entrant lock** (`exclusive_patching`). A run on
+  another thread waits for the first to finish, so the result never depends on thread timing.
+  Nesting on one thread is allowed.
+- **The originals are read after the lock is taken**, and the installs happen inside the `try`, so an
+  interrupt between two installs still restores everything.
+- **A name is restored only if it is still ours.** Code that replaced the function while a run was
+  active keeps its replacement.
+- **The shim and every tripwire act only on the thread that started the run.** Any other thread gets
+  the real function, so a host event loop or a background thread is unaffected.
+
+**Consequences.**
+- Runs from threads are serialized, not parallel; a pool of threads calling `check` still produces
+  the same results as running the seeds one after another.
+- Declared change: `audit_mode()` and the CSPRNG shim now affect the calling thread only. A thread
+  started by the scenario is no longer seeded or audited (a real thread is out of scope anyway,
+  `docs/scope.md`).
+- Out-of-order manual `__exit__` calls on these context managers are not supported.
+- A thread waiting for the lock cannot be interrupted by Ctrl-C on Windows until the running run ends.
+- A name that other code replaced during a run keeps that replacement. If the replacer later puts
+  back the value it saw, which was the run's wrapper, the wrapper stays installed. This is the same
+  shape as an undo from `monkeypatch`, so do not layer patches over a running check.
+- A context manager that is entered and never exited holds the lock for as long as its thread lives.
+  The runs in this library always exit; a hand-written one that does not blocks the next run.
+- A run must not wait for another thread's run. A scenario that starts a thread which calls `check`
+  and then joins it blocks until the first run ends, and a module that calls `check` at import time
+  can deadlock against another thread that is importing it. Neither is something a deterministic
+  run does; they are listed because the lock is blocking.
+
+---
+
 ## Planned / deferred decisions
 
 - **Auditor static-scan depth** — whether to add static detection of leak patterns *on top of* the

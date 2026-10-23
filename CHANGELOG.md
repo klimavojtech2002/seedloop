@@ -16,6 +16,13 @@ All notable changes to this project are documented here. The format follows
 - A check that fails, or an interrupt raised, in the last steps after the scenario returns is no
   longer swallowed.
 - A run that ended with a pending task reported `InvalidStateError` instead of its real outcome.
+- Runs started from different threads no longer leave `os.urandom` patched. They take turns, and the
+  seeded source and the audit tripwires apply to the thread that started the run only, so
+  `asyncio.to_thread(check, ..., audit=True)` leaves the host event loop working.
+
+### Changed
+- The seeded `os.urandom`/`secrets` source and the audit tripwires now apply to the thread that started
+  the run. A thread the scenario starts itself is no longer seeded or audited.
 
 ## [0.4.0] — 2026-08-09
 
