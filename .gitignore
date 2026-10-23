@@ -16,6 +16,8 @@ dist/
 *.egg-info/
 
 # Tooling caches
+.coverage
+htmlcov/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
