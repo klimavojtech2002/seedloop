@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows
 - Runs started from different threads no longer leave `os.urandom` patched. They take turns, and the
   seeded source and the audit tripwires apply to the thread that started the run only, so
   `asyncio.to_thread(check, ..., audit=True)` leaves the host event loop working.
+- `InvariantError` and `EntropyLeakError` can be pickled and copied, with their notes, so a failure
+  can cross a process pool or a parallel sweep. Before, `pickle.loads` raised `TypeError`.
 
 ### Changed
 - The seeded `os.urandom`/`secrets` source and the audit tripwires now apply to the thread that started
