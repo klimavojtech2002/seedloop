@@ -166,11 +166,9 @@ def test_a_grandchild_that_holds_the_pipes_after_the_child_exited_is_killed() ->
             ["ps", "-eo", "pid,ppid,pgid,sid,stat,etimes,cmd"], capture_output=True, text=True
         ).stdout
         status = Path(f"/proc/{grandchild}/status").read_text(encoding="utf-8")
-        raise AssertionError(f"DIAG grandchild={grandchild}
-{status}
-{table}")
-{status}
-{info}")
+        raise AssertionError(
+            "DIAG grandchild=" + str(grandchild) + chr(10) + status + chr(10) + table
+        )
 
 
 @pytest.mark.meta
