@@ -84,7 +84,7 @@ def test_shim_controls_os_urandom() -> None:
 
 
 def test_shim_controls_secrets_via_random_alias() -> None:
-    # The point of the slice: shimming os.urandom alone would NOT control secrets, because random
+    # The point of this test: shimming os.urandom alone would NOT control secrets, because random
     # binds `from os import urandom as _urandom` at import. The shim patches that alias too.
     with csprng_shim(substream(99, "csprng")):
         first = secrets.token_bytes(16)
@@ -145,9 +145,10 @@ def test_ensure_hash_seed_already_pinned_is_noop() -> None:
 def _run_child(seed: int) -> str:
     # Drive the launcher in a fresh interpreter (never in the test process, which would re-exec
     # pytest). The child pins PYTHONHASHSEED via the launcher, then prints hash("seedloop").
+    # No sys.path tweak: the child imports seedloop exactly as the test process does (the editable
+    # install, or PYTHONPATH when the mutation harness points at a modified copy). Putting the
+    # repository's src/ first would make this test exercise the real tree and ignore the copy.
     script = textwrap.dedent(f"""
-        import sys
-        sys.path.insert(0, {os.path.join(os.getcwd(), "src")!r})
         from seedloop._entropy import ensure_hash_seed
         ensure_hash_seed({seed})
         print(hash("seedloop"))

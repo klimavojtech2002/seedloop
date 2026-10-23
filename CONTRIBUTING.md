@@ -43,11 +43,37 @@ does not catch it, so "the tests pass" means "a regression would fail a test" (A
 ```bash
 pip install -e ".[dev,mutation]"
 python scripts/mutation_sweep.py            # check survivors against the reviewed baseline
-python scripts/mutation_sweep.py --update   # regenerate the baseline, then restore the reasons
+python scripts/mutation_sweep.py --shard 2/4  # one shard of the mutants (CI runs four in parallel)
+python scripts/mutation_sweep.py --list     # print every mutant key
+python scripts/mutation_sweep.py --update   # regenerate the baseline, then write the reasons
 ```
+
+Mutations run in a temporary copy of `src/`, never in your working tree. Each mutant has a stable key,
+`path::function#n description [hash of the original line]`, so a baseline entry survives edits
+elsewhere in the file and in other functions. It is reported as stale when the line it describes
+changes, or when a new mutation site is added earlier in the same function (which renumbers the
+later ones). A mutant that makes the suite hang counts as caught, and the whole process tree of a
+hung run is killed.
 
 A new survivor is a real coverage gap: add a test, or record it in `scripts/mutation_baseline.txt` with
 the reason it is equivalent.
+
+Three more checks guard the guards. The corpus runs as part of plain `pytest`; the other two are slower
+or need the network, so plain `pytest` skips them and CI runs them in their own jobs:
+
+```bash
+python scripts/pin_corpus.py                # the characterization corpus (also part of `pytest`)
+python scripts/pin_corpus.py --update       # re-pin after a deliberate, changelogged behaviour change
+pytest -m meta                              # each named change to a copy of src/ must fail the corpus;
+                                            # the mutation harness is tested on a toy project
+pytest -m differential                      # generated programs must behave like the previous release
+```
+
+The corpus pins about two dozen scenarios, each at several seeds, instead of one scenario at one
+seed. Each change listed in `tests/test_corpus.py` is proven to make it fail. The differential
+test compares generated programs against the previously released wheel in a separate process; a difference is a behaviour
+change and has to be declared in `tests/test_differential.py`. Tests that could hang run through
+`tests/_support.py::run_isolated`, which gives them a hard time limit in a fresh interpreter.
 
 ## Layout
 

@@ -1,0 +1,29 @@
+name: Nightly
+
+# The long run that is too slow for every push: many more generated programs against the previous
+# release. Also runnable by hand.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  differential:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PYTHONHASHSEED: "0"
+      SEEDLOOP_DIFF_PROGRAMS: "1500"
+      SEEDLOOP_DIFF_REQUIRED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Differential test against the previous release (1500 new programs each night)
+        run: |
+          export SEEDLOOP_DIFF_START=$(( (${{ github.run_number }} % 1000) * 1500 ))
+          pytest -q -m differential
