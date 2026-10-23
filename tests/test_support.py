@@ -143,6 +143,15 @@ def test_a_pattern_that_is_not_found_is_a_failure_not_a_skip(tmp_path: Path) -> 
         copy_src_with(tmp_path, missing)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process states")
+def test_a_process_reaped_between_the_signal_check_and_the_state_read_is_not_alive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The signal check still sees the zombie, but it is gone by the time its state is read.
+    monkeypatch.setattr(os, "kill", lambda pid, sig: None)
+    assert not pid_alive(2**22 + 12345)
+
+
 @pytest.mark.meta
 def test_a_grandchild_that_holds_the_pipes_after_the_child_exited_is_killed() -> None:
     # The direct child exits at once but leaves a grandchild holding stdout/stderr open, so the
