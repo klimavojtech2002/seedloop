@@ -51,7 +51,7 @@ def test_a_hang_fails_fast_with_the_partial_output() -> None:
     code = "import time; print('started', flush=True); time.sleep(60)"
     started = time.monotonic()
     with pytest.raises(IsolatedTimeout) as caught:
-        run_isolated(code, timeout=1.5)
+        run_isolated(code, timeout=2)
     assert time.monotonic() - started < 30  # the cap, not the child's own 60 s sleep
     assert "started" in caught.value.stdout
     assert caught.value.timeout == 2
@@ -228,26 +228,28 @@ def test_orphan_kill_many_times() -> None:
     def state(pid: int) -> str:
         try:
             raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-        except OSError:
-            return "gone"
+        except OSError as exc:
+            return "gone" if isinstance(exc, FileNotFoundError) else type(exc).__name__
         return raw.rsplit(")", 1)[1].split()[0]
 
     bad: list[str] = []
-    for attempt in range(6):
+    for attempt in range(8):
         with pytest.raises(IsolatedTimeout) as caught:
-            run_isolated(code, timeout=2)
+            run_isolated(code, timeout=3)
         grandchild = int(caught.value.stdout.split()[0])
         began = time.monotonic()
         history: list[str] = []
         last = ""
-        while time.monotonic() - began < 30:
-            current = state(grandchild)
+        while time.monotonic() - began < 20:
+            current = f"{state(grandchild)}/alive={pid_alive(grandchild)}"
             if current != last:
                 history.append(f"{time.monotonic() - began:.2f}s:{current}")
                 last = current
-            if current in ("gone", "Z"):
+            if "alive=False" in current:
                 break
             time.sleep(0.02)
-        if last not in ("gone", "Z"):
+        if "alive=False" not in last:
             bad.append(f"attempt {attempt} pid {grandchild}: {history}")
+        elif len(history) > 1:
+            bad.append(f"slow attempt {attempt}: {history}")
     assert not bad, "DIAGMANY " + str(len(bad)) + chr(10) + chr(10).join(bad)
