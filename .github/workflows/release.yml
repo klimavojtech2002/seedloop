@@ -27,6 +27,9 @@ jobs:
   gates:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # The corpus and golden pins are exact; pin the one process-level source of variation.
+      PYTHONHASHSEED: "0"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6

@@ -21,6 +21,9 @@ All notable changes to this project are documented here. The format follows
   `asyncio.to_thread(check, ..., audit=True)` leaves the host event loop working.
 - `InvariantError` and `EntropyLeakError` can be pickled and copied, with their notes, so a failure
   can cross a process pool or a parallel sweep. Before, `pickle.loads` raised `TypeError`.
+- The source distribution now carries the test helpers, the golden data, the scripts and the docs, so
+  its own test suite runs from the unpacked archive. Before, it held only `tests/test_*.py` and failed
+  on import.
 
 ### Changed
 - The seeded `os.urandom`/`secrets` source and the audit tripwires now apply to the thread that started
