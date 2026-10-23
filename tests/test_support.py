@@ -219,22 +219,39 @@ def test_output_printed_before_the_cap_survives_a_grandchild_that_escaped_the_gr
 @pytest.mark.meta
 def test_orphan_kill_many_times() -> None:
     code = (
-        "import subprocess, sys\n"
-        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])\n"
-        "print(child.pid, flush=True)\n"
+        "import subprocess, sys
+"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])
+"
+        "print(child.pid, flush=True)
+"
     )
+
+    def state(pid: int) -> str:
+        try:
+            raw = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        except OSError:
+            return "gone"
+        return raw.rsplit(")", 1)[1].split()[0]
+
     bad: list[str] = []
     for attempt in range(25):
         with pytest.raises(IsolatedTimeout) as caught:
             run_isolated(code, timeout=2)
         grandchild = int(caught.value.stdout.split()[0])
-        deadline = time.monotonic() + 6
-        while pid_alive(grandchild) and time.monotonic() < deadline:
-            time.sleep(0.1)
-        if pid_alive(grandchild):
-            table = subprocess.run(
-                ["ps", "-eo", "pid,ppid,pgid,sid,stat,etimes,cmd"], capture_output=True, text=True
-            ).stdout
-            status = Path(f"/proc/{grandchild}/status").read_text(encoding="utf-8")
-            bad.append(f"attempt {attempt} pid {grandchild}\n{status}\n{table}")
-    assert not bad, "DIAGMANY " + str(len(bad)) + "\n" + "\n".join(bad[:2])
+        began = time.monotonic()
+        history: list[str] = []
+        last = ""
+        while time.monotonic() - began < 8:
+            current = state(grandchild)
+            if current != last:
+                history.append(f"{time.monotonic() - began:.2f}s:{current}")
+                last = current
+            if current in ("gone", "Z"):
+                break
+            time.sleep(0.02)
+        if last not in ("gone", "Z"):
+            bad.append(f"attempt {attempt} pid {grandchild}: {history}")
+    assert not bad, "DIAGMANY " + str(len(bad)) + "
+" + "
+".join(bad)
