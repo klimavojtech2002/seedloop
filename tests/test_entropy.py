@@ -8,6 +8,7 @@ import secrets
 import subprocess
 import sys
 import textwrap
+from collections.abc import Callable
 
 import pytest
 
@@ -17,6 +18,7 @@ from seedloop._entropy import (
     hash_seed_for,
     substream,
 )
+from seedloop._world import World
 
 # --- sub-streams (ADR-0009) ---
 
@@ -34,16 +36,16 @@ def test_substreams_are_distinct() -> None:
     ]
 
 
-def test_world_rng_is_the_user_substream_distinct_from_net() -> None:
+def test_world_rng_is_the_user_substream_distinct_from_net(
+    make_world: Callable[[int], World],
+) -> None:
     # World.rng must be the "user" sub-stream — not the net/faults stream. Mislabeling it would
     # correlate user entropy with network timing while still passing every replay test (the streams
     # stay separate Random instances), so pin the label here at the World API level.
-    from seedloop._world import World
-
-    assert [World(7).rng.random() for _ in range(5)] == [
+    assert [make_world(7).rng.random() for _ in range(5)] == [
         substream(7, "user").random() for _ in range(5)
     ]
-    assert [World(7).rng.random() for _ in range(5)] != [
+    assert [make_world(7).rng.random() for _ in range(5)] != [
         substream(7, "net").random() for _ in range(5)
     ]
 

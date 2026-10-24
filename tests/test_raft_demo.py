@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 
 import seedloop
 from seedloop._entropy import csprng_shim, substream
@@ -48,21 +49,27 @@ def test_correct_election_has_no_split_brain_over_the_same_range() -> None:
     assert result.failing_seed is None
 
 
-def _node(addr: int, role: str, term: int) -> RaftNode:
-    world = World(0)
+def _node(make_world: Callable[[int], World], addr: int, role: str, term: int) -> RaftNode:
+    world = make_world(0)
     node = RaftNode(world, addr, [], buggy=False)
     node.role = role
     node.term = term
     return node
 
 
-def test_invariant_helpers() -> None:
+def test_invariant_helpers(make_world: Callable[[int], World]) -> None:
     from seedloop.demos.raft import CANDIDATE, FOLLOWER, LEADER
 
-    assert at_most_one_leader_per_term([_node(0, FOLLOWER, 1), _node(1, CANDIDATE, 1)])  # no leader
-    assert at_most_one_leader_per_term([_node(0, LEADER, 1), _node(1, FOLLOWER, 1)])  # one leader
-    assert at_most_one_leader_per_term([_node(0, LEADER, 1), _node(1, LEADER, 2)])  # diff terms ok
-    two_in_one = [_node(0, LEADER, 5), _node(1, LEADER, 5)]
+    assert at_most_one_leader_per_term(
+        [_node(make_world, 0, FOLLOWER, 1), _node(make_world, 1, CANDIDATE, 1)]
+    )  # no leader
+    assert at_most_one_leader_per_term(
+        [_node(make_world, 0, LEADER, 1), _node(make_world, 1, FOLLOWER, 1)]
+    )  # one leader
+    assert at_most_one_leader_per_term(
+        [_node(make_world, 0, LEADER, 1), _node(make_world, 1, LEADER, 2)]
+    )  # diff terms ok
+    two_in_one = [_node(make_world, 0, LEADER, 5), _node(make_world, 1, LEADER, 5)]
     assert not at_most_one_leader_per_term(two_in_one)  # split-brain in one term
     assert leaders_by_term(two_in_one) == {5: {0, 1}}
 
@@ -88,10 +95,10 @@ def test_majority_threshold_is_strict() -> None:
     assert roles == [CANDIDATE, LEADER]  # leader only once a majority is reached
 
 
-def test_election_timeouts_are_seeded() -> None:
+def test_election_timeouts_are_seeded(make_world: Callable[[int], World]) -> None:
     # The race is a function of the seed: two runs draw identical election timeouts.
     def draws(seed: int) -> list[float]:
-        world = World(seed)
+        world = make_world(seed)
         node = RaftNode(world, 0, [1, 2], buggy=False)
         return [node._election_timeout() for _ in range(5)]
 

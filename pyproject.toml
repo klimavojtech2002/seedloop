@@ -40,6 +40,7 @@ dev = [
     "pytest>=8",
     "pytest-timeout>=2",
     "packaging>=23",
+    "pytest-randomly>=3",
     "build>=1",
     "seedloop[hypothesis]",
 ]
@@ -74,11 +75,13 @@ testpaths = ["tests"]
 # `meta` checks the checks (each change to a throw-away copy of src/ must fail the corpus) and
 # `differential` compares against the previous release; both are slow or need the network, so they
 # run in their own CI jobs. `pytest -m meta` / `pytest -m differential` selects them.
-addopts = "-q -m 'not meta and not differential'"
+addopts = "-q -m 'not meta and not differential' --strict-markers --strict-config"
 markers = [
     "meta: proves a check is not vacuous by applying changes to a copy of the source",
     "differential: compares generated programs against the previously released wheel",
 ]
+# A warning is a failure: a test that emits one must fix it or say, here, why it is ignored.
+filterwarnings = ["error"]
 # A simulated run can livelock on a loop bug; cap every test so a hang fails fast instead of
 # blocking CI. The suite otherwise runs in virtual time and finishes in milliseconds.
 timeout = 30

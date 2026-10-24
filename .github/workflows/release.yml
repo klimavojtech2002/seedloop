@@ -45,7 +45,8 @@ jobs:
       - name: Types
         run: mypy .
       - name: Tests
-        run: pytest -q
+        # A fixed order: a release must not depend on a random one (the change's own CI already ran random).
+        run: pytest -q -p no:randomly
       - name: Demo
         run: python -m seedloop.demos.raft
 

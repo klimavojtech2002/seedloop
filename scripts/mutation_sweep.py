@@ -48,7 +48,17 @@ DEFAULT_BASELINE = Path(__file__).resolve().parent / "mutation_baseline.txt"
 # tests, a collection error from a mutation that breaks an import, an interruption, or a crash)
 # is a mutant the suite noticed.
 HARNESS_ERROR_CODES = (3, 4, 5)
-TEST_ARGS = ("-q", "-x", "-p", "no:cacheprovider", "-m", "not meta and not differential")
+# A fixed order keeps kill/survive results and run times comparable between sweeps.
+TEST_ARGS = (
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "-p",
+    "no:randomly",
+    "-m",
+    "not meta and not differential",
+)
 
 _COMPARISON = {
     cst.LessThan: cst.LessThanEqual,

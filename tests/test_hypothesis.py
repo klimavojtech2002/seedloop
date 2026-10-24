@@ -59,7 +59,7 @@ def test_seeds_draws_valid_world_seeds() -> None:
     @settings(max_examples=50, database=None, deadline=None)
     def prop(seed: int) -> None:
         assert isinstance(seed, int) and seed >= 0  # the documented, conventional domain
-        World(seed)  # the runtime accepts every drawn seed
+        World(seed)._close()  # the runtime accepts every drawn seed (and the loop is not leaked)
         drawn.append(seed)
 
     prop()
