@@ -39,10 +39,10 @@ def _no_leaked_process_patches() -> Iterator[None]:
 def _no_unclosed_loops(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Fail the test that leaves an event loop open, instead of a random later one.
 
-    A loop is part of a reference cycle, so Python frees it only when the cyclic collector next
-    runs, and the ``ResourceWarning`` then lands on whichever test is running. Remembering each loop
-    when it is created lets the end of the test that made it say so, without waiting for the
-    collector.
+    A loop is usually part of a reference cycle, so Python can free it only when the cyclic
+    collector next runs, and the ``ResourceWarning`` then lands on whichever test is running.
+    Remembering each loop when it is created lets the end of the test that made it say so, without
+    waiting for the collector.
 
     A task that a test leaves pending on purpose (a teardown that deadlocks) has the same problem:
     when the collector frees it, asyncio logs "Task was destroyed but it is pending!", and that

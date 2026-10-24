@@ -144,7 +144,11 @@ def test_what_must_not_depend_on_the_order_says_so(keeps_a_fixed_order: str) -> 
     path = ROOT / keeps_a_fixed_order
     if not path.exists():
         pytest.skip("workflow files are not part of the source distribution")
-    assert "no:randomly" in path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    assert "no:randomly" in text
+    for line in text.splitlines():  # in a workflow, each job that needs the file order says so
+        if "pytest" in line and ("-m meta" in line or "-m differential" in line):
+            assert "no:randomly" in line, line
 
 
 def test_the_tracker_closes_the_loop_it_found_so_it_cannot_warn_later(tmp_path: Path) -> None:
@@ -152,7 +156,9 @@ def test_the_tracker_closes_the_loop_it_found_so_it_cannot_warn_later(tmp_path: 
     (tmp_path / "test_two.py").write_text(
         "import gc\n"
         "from seedloop import World\n\n"
-        "def test_leaks():\n    World(1)\n\n"
+        "def test_leaks():\n"
+        "    held = [World(1)]\n"
+        "    held.append(held)  # in a cycle, so only the cyclic collector can free the loop\n\n"
         "def test_later():\n    gc.collect()\n",
         encoding="utf-8",
     )

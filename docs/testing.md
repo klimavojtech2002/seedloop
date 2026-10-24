@@ -80,7 +80,7 @@ result in seedloop's own CI is treated as a defect in seedloop, not retried away
 
 The suite is also strict. A warning is an error (`filterwarnings = ["error"]`), as are unknown markers and
 unknown configuration keys. A test that leaves a `DeterministicLoop` open fails, and it is that test that
-fails: a loop is freed only when Python's cyclic collector next runs, so without the check the resulting
+fails: a loop can be freed only when Python's cyclic collector next runs, so without the check the resulting
 `ResourceWarning` would be reported against a random later test. `tests/test_strictness.py` runs a child
 `pytest` with this project's configuration to prove each of these.
 
