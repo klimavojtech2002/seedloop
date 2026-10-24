@@ -37,6 +37,10 @@ a test that leaves an event loop open fails (build worlds with the `make_world` 
 random order, and every run prints the seed; to repeat a run that failed, use the printed
 `pytest -p randomly --randomly-seed=<seed>`, or `-p no:randomly` for the file order.
 
+Coverage is measured in CI and compared with per-file floors (`scripts/coverage_floors.txt`). To look at it
+locally: `COVERAGE_FILE=$PWD/.coverage python -m coverage run -m pytest`, then
+`python -m coverage combine && python -m coverage report`.
+
 A change is not done until every gate is green and its output has been read. New logic ships with tests,
 including the edge and adversarial cases; anything claiming determinism ships with a replay test that
 proves *same seed → same timeline* (see [docs/testing.md](docs/testing.md)).

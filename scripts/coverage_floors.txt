@@ -1,0 +1,19 @@
+# Per-file coverage floors (statements and branches, whole percent, rounded down from the report
+# that CI combines from every cell of the matrix). A floor only goes up: run
+#   python scripts/check_coverage.py coverage.json scripts/coverage_floors.txt --raise
+# on the combined report to raise them; lowering one is a deliberate edit that has to be explained.
+# _entropy.py: the line that calls os.execve cannot be measured, because the process is replaced
+# before coverage can save its data.
+src/seedloop/__init__.py 100
+src/seedloop/_audit.py 98
+src/seedloop/_entropy.py 96
+src/seedloop/_faults.py 100
+src/seedloop/_loop.py 97
+src/seedloop/_net.py 99
+src/seedloop/_run.py 100
+src/seedloop/_trace.py 91
+src/seedloop/_world.py 98
+src/seedloop/demos/__init__.py 100
+src/seedloop/demos/raft.py 86
+src/seedloop/errors.py 100
+src/seedloop/hypothesis.py 100

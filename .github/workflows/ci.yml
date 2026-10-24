@@ -79,6 +79,10 @@ jobs:
           python -m coverage combine
           python -m coverage report
           python -m coverage json -o coverage.json
+      - name: Check the per-file floors
+        run: |
+          mypy scripts/check_coverage.py
+          python scripts/check_coverage.py coverage.json scripts/coverage_floors.txt
       - name: Keep the combined report
         uses: actions/upload-artifact@v7
         with:
