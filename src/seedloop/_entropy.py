@@ -34,7 +34,7 @@ def exclusive_patching() -> Iterator[None]:
 
     Two threads patching at once would save each other's wrappers as the "original" and leave the
     process patched for good. A second thread therefore waits for the first run to finish, so the
-    outcome never depends on thread timing (ADR-0026).
+    outcome never depends on thread timing (ADR-0024).
     """
     with _patch_lock:
         yield
@@ -71,7 +71,7 @@ def csprng_shim(stream: random.Random) -> Iterator[None]:
 
     Patches both ``os.urandom`` and the ``random._urandom`` alias that ``secrets`` draws through;
     restores both originals on exit, even on error. Only the calling thread is seeded: any other
-    thread keeps the real source. Runs from different threads wait for each other (ADR-0026).
+    thread keeps the real source. Runs from different threads wait for each other (ADR-0024).
     """
     seeded = _seeded_urandom(stream)
     owner = threading.get_ident()

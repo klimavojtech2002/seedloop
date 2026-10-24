@@ -1,8 +1,8 @@
 """The timeline: an append-only record of a run's events.
 
 Determinism is proven by replay — running the same scenario twice must produce an identical
-timeline (``docs/testing.md``). This slice records the events a scenario chooses to log; later
-slices add scheduled network and fault events with stable identities.
+timeline (``docs/testing.md``). A scenario logs events with ``World.record``; the network and the
+fault scheduler add their own events as they happen.
 """
 
 from __future__ import annotations

@@ -2,6 +2,7 @@
 # the test helpers and golden data, the scripts the tests run, and the docs.
 include CHANGELOG.md CONTRIBUTING.md
 graft docs
+graft examples
 graft scripts
 graft tests
 global-exclude __pycache__ *.py[cod]

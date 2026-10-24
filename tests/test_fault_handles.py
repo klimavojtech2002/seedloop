@@ -1,4 +1,4 @@
-"""Seed-scheduled fault handles: `partition`/`slow_link`/`crash` + `run_for(faults=...)` (0470)."""
+"""Seed-scheduled fault handles: `partition`/`slow_link`/`crash` + `run_for(faults=...)`."""
 
 from __future__ import annotations
 
@@ -321,8 +321,8 @@ def test_slow_link_pinned_b_resolves_a_from_bound_addresses() -> None:
 def test_slow_link_pinned_b_never_resolves_a_to_the_same_address() -> None:
     # A single seed is not enough to prove this: drawing `a` from every bound address without
     # excluding the pinned `b` collapses the pair on a fraction of seeds (silently inert, since
-    # frozenset((a, b)) then never matches a real (src, dst) pair) -- proven wrong for slice 0470
-    # by an independent audit. Swept across many seeds, not just one.
+    # frozenset((a, b)) then never matches a real (src, dst) pair) -- an easy mistake.
+    # Swept across many seeds, not just one.
     async def scenario(world: World) -> None:
         world.net.bind(0)
         world.net.bind(1)
@@ -867,8 +867,7 @@ def test_faults_list_order_is_part_of_the_runs_identity() -> None:
 def test_crash_takes_precedence_over_a_concurrent_partition_cut() -> None:
     # A message can be both crossing an active partition and touching a crashed node; the drop
     # reason must be drop-crashed (permanent), not drop-partitioned (heals), so a debugger isn't
-    # pointed at the wrong cause (the plan's own devil's-advocate/mutation-target list names this
-    # exact precedence as load-bearing).
+    # pointed at the wrong cause (a mutation of this exact precedence must fail a test).
     async def scenario(world: World) -> None:
         a = world.net.bind(1)
         world.net.bind(2)
@@ -908,7 +907,7 @@ def test_partition_heal_does_not_resurrect_an_overlapping_crashed_node() -> None
 
 def test_run_for_zero_seconds_with_faults_is_not_an_error() -> None:
     # Every window collapses to the instant of the call; begin/end fire in registration order,
-    # so nothing is ever observably active -- not an error (plan's own edge case).
+    # so nothing is ever observably active -- not an error.
     async def scenario(world: World) -> None:
         world.net.bind(1)
         world.net.bind(2)

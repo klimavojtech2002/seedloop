@@ -1,10 +1,10 @@
 """Replay-stability pin: a golden timeline that guards the ADR-0011 intra-version contract.
 
-ADR-0011 promises "same seed -> same timeline within a major version". The in-process replay tests
+ADR-0011 promises "same seed -> same timeline within a minor version". The in-process replay tests
 prove a seed is stable within one run; they cannot catch a refactor that silently shifts a timeline
 versus a previous commit. This pins one canonical scenario's timeline to a committed golden fixture:
 any timeline-affecting change (scheduling, the virtual clock, entropy derivation, or fault-draw
-order) fails the check, forcing a conscious CHANGELOG note or a deliberate re-pin across a major.
+order) fails the check, forcing a conscious CHANGELOG note or a deliberate re-pin across a minor.
 
 The canonical scenario exercises the whole determinism surface at a fixed seed: concurrency and
 scheduling, the virtual clock and autojump, the user RNG, and the seeded network with loss,

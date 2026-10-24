@@ -43,7 +43,7 @@ _ROUTES = [
     ("v1.2.3.post1", "1.2.3.post1", "pypi"),  # a .post is a real release, not a pre-release
     ("v1.2.3rc1.post1", "1.2.3rc1.post1", "testpypi"),  # a .post *of* an rc is still a pre-release
     ("v1!2.3", "1!2.3", "pypi"),  # an epoch is a final release
-    ("v0.3.2rc1", "0.3.2rc1", "testpypi"),  # the planned dry-run tag
+    ("v0.3.2rc1", "0.3.2rc1", "testpypi"),  # a rehearsal tag
     ("1.2.3", "1.2.3", "pypi"),  # a missing leading `v` is tolerated
 ]
 

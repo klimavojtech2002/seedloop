@@ -36,14 +36,14 @@ seed decides, per message:
 
 | Effect | How it is produced |
 |--------|--------------------|
-| **Latency** | A delay drawn from a configured distribution; the delivery event is scheduled at `now + delay`. |
+| **Latency** | A delay drawn from a fixed range (1 to 20 ms), scaled by any active slow-link fault; the delivery event is scheduled at `now + delay`. |
 | **Reordering** | Emergent, not separately injected: two messages sent close together draw independent latencies, so arrival order can differ from send order. |
 | **Drop** | With the link's loss probability, no delivery event is scheduled (the message still draws its `net` latency, so dropping it does not shift other messages). |
 | **Duplication** | With the link's duplication probability, a second delivery is scheduled — the original's latency drawn from `net`, the duplicate's from `faults`. |
 | **Partition** | A reachability predicate on the link; while open, a delivery that fires is dropped. |
 
-The distributions and probabilities are run parameters with documented defaults; pinning them forces a
-regime, leaving them lets the seed explore. Nothing here reads wall-clock time or a real socket — the
+Loss and duplication are per-endpoint parameters of `bind` (default: none); the latency range is fixed.
+Nothing here reads wall-clock time or a real socket — the
 "network" is queues and timers.
 
 ## Opt-in reliable, ordered delivery
@@ -56,7 +56,7 @@ a delivery *policy* over the same channel, not a TCP stack:
 - Delivery order matches send order per `(src, dst)` pair — implemented by giving the link a single
   FIFO delivery queue rather than independent per-message latencies.
 - Latency still applies, and a partition still cuts the link while open (messages queue or fail per the
-  policy settled in Phase 2).
+  partition policy).
 
 What `reliable` does **not** add: byte-stream semantics — partial reads, coalescing, flow control,
 backpressure, connection handshakes. Those are TCP fidelity, out of scope by ADR-0001/0006. A reliable
@@ -85,7 +85,7 @@ The same seed injects the same loss, duplication, and (under a scenario's topolo
 effects at the same virtual times every run — which is what makes a partition-dependent bug reproducible
 (the DST payoff: `check` finds the failing seed, `replay` reproduces it).
 
-**Seed-scheduled faults** (ADR-0022): `world.run_for(seconds, faults=[...])` also accepts `Fault` handles
+**Seed-scheduled faults** (ADR-0022): `world.run_for(seconds=..., faults=[...])` also accepts `Fault` handles
 from `world.partition()`/`slow_link()`/`crash()` — a different set of methods from `world.net.partition`/
 `heal` above, returning an inert handle `run_for` resolves and schedules rather than acting immediately.
 Any field a handle's constructor leaves unset (which nodes; for `partition`/`slow_link`, also when and

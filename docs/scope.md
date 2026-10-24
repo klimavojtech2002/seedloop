@@ -19,12 +19,12 @@ must be controlled. `seedloop` controls these:
 | Time (`asyncio.sleep`, timeouts, `loop.time`) | Virtual clock owned by the loop; advances instantly and deterministically. |
 | Randomness (`random`) | Seeded RNG injected into the run. |
 | CSPRNG (`os.urandom`, `secrets`) | Shimmed to a seeded source during a run — both `os.urandom` and the `random._urandom` alias `secrets` binds at import (ADR-0010). |
-| Hash/set ordering (`PYTHONHASHSEED`) | Pinned before interpreter start via the re-exec launcher (ADR-0010). |
+| Hash/set ordering (`PYTHONHASHSEED`) | Pinned before interpreter start by `ensure_hash_seed`, which `check` and `replay` do not call for you (ADR-0010, ADR-0015). |
 | Network: latency, ordering, loss, partitions | The simulated transport; the seed decides all of it (ADR-0006). |
 
 Each source is drawn from its own sub-stream of the seed, not one shared stream, so adding a consumer
 does not perturb the others' timelines (ADR-0009). If your code stays inside this set, a failing run
-reduces to a seed you can replay forever — within a major version (ADR-0011).
+reduces to a seed you can replay — within a minor version (ADR-0011).
 
 **How the boundary is enforced, not just stated.** The same points where the World substitutes a seeded
 source are tripwires: under `check(..., audit=True)` an uncontrolled source — real `os.urandom`, real
@@ -33,7 +33,7 @@ clocks (wall, monotonic, perf-counter, CPU, and current-time calendar reads), th
 running silently (ADR-0008). A leak is therefore a loud, reproducible failure on the
 seed that hit it, not a guarantee you have to take on trust. The tripwires and the seeded `os.urandom`
 apply to the thread that started the run; other threads keep the real functions, and runs from
-different threads take turns (ADR-0026). The tripwires intercept Python-level
+different threads take turns (ADR-0024). The tripwires intercept Python-level
 attribute calls; a reference bound before the audit started (`from time import monotonic`), a call
 that reads the clock in C below the `time.*` attributes (`datetime.now()`/`utcnow()`), or a C
 extension that reads the clock or the OS RNG directly is not caught — the same reason C-extension
@@ -52,7 +52,7 @@ kernel at points you cannot observe or reproduce, and the GIL serializes bytecod
 interleaving deterministic. `multiprocessing` and subprocesses have separate memory and their own OS
 scheduling. This is the same wall that prevents deterministic simulation testing in Go, whose runtime
 multiplexes goroutines across OS threads. `seedloop` targets single-threaded `asyncio`, which sits on
-the *good* side of that line — and rejects or warns on `run_in_executor`, `threading`, and subprocess
+the *good* side of that line — and rejects `run_in_executor`, `threading`, and subprocess
 use inside a simulated run rather than pretending to control them.
 
 ### `uvloop` — a wall
@@ -65,13 +65,13 @@ therefore out of scope.
 
 ### Real sockets and C-extension drivers — out of scope by design
 
-This is the decision that makes the project buildable by one person, and it is made openly. A tool
+This decision keeps the project small enough to verify, and it is made openly. A tool
 that drove *real* I/O through a custom loop would have to implement enough of the private, unstable
 `BaseEventLoop` interface to satisfy real drivers, build a faithful TCP/IP simulation (a multi-month
 subsystem on its own — `madsim` had to fork both `tokio` and `tokio-postgres` to get there), and still
 lose determinism wherever a C extension reads the clock or the OS RNG directly, invisibly to any
 Python-level shim. The teams that pursued whole-program determinism (Antithesis) concluded it requires
-intercepting *all* syscalls at the hypervisor level — beyond a library, let alone a solo one.
+intercepting *all* syscalls at the hypervisor level — beyond a library.
 
 So `seedloop` does not drive real I/O. Users write their protocol against an **abstract transport**
 (the [sans-I/O](https://sans-io.readthedocs.io/) pattern, as in `h11` and `h2`): the logic sends and
@@ -86,9 +86,9 @@ are natural partners.
 ### External oracles (including LLMs) — record/replay, never live
 
 Anything outside the simulated world — a real HTTP call, an LLM — is nondeterministic by nature. Inside
-a deterministic run such a call must be **recorded once and replayed** from a fixture, never made live;
-a live call voids determinism for that seed. `seedloop` treats these the way it treats the network:
-through the controllable seam, replayed.
+a deterministic run such a call must be kept out of the run, or **recorded once and replayed** from a
+fixture by your own code, never made live; a live call voids determinism for that seed. `seedloop` has no
+record and replay facility for them: they sit outside the controlled seam.
 
 ## What this is good for, concretely
 
@@ -101,8 +101,7 @@ The sweet spot is code where the *logic* holds the concurrency bugs and the I/O 
 - Resilience logic: retry, backoff, circuit breakers, rate limiters, timeouts.
 
 For this class of code — which is precisely where rare, partition-dependent bugs live and where
-reproduction is hardest — `seedloop` is exactly the right tool, and there is no equivalent in Python
-today.
+reproduction is hardest — `seedloop` is built for exactly this.
 
 ## What this is not good for
 

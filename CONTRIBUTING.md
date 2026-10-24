@@ -1,14 +1,13 @@
 # Contributing
 
-seedloop is a built, tested library; the planned roadmap (Phases 1 through 3, plus the ergonomics work
-that followed) is complete. The documentation under [docs/](docs/) is the design reference, and
+seedloop is a built, tested library. The documentation under [docs/](docs/) is the design reference, and
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes how a run works end to end. This file is how to
 work on the code.
 
 ## Requirements
 
-- CPython 3.12 or newer. seedloop attaches its loop through `asyncio`'s `loop_factory`, which those
-  versions support.
+- CPython 3.12 or newer, tested on 3.12 to 3.14. seedloop's loop builds on private parts of `asyncio`,
+  and only those versions are checked on every change.
 - A single-threaded target. seedloop tests `asyncio` logic against an abstract transport; real threads,
   `multiprocessing`, real sockets, and `uvloop` are out of scope by design (see [docs/scope.md](docs/scope.md)).
 
@@ -69,8 +68,8 @@ pytest -m meta                              # each named change to a copy of src
 pytest -m differential                      # generated programs must behave like the previous release
 ```
 
-The corpus pins about two dozen scenarios, each at several seeds, instead of one scenario at one
-seed. Each change listed in `tests/test_corpus.py` is proven to make it fail. The differential
+The corpus pins about two dozen scenarios, a few swept over a parameter, each at two to twenty
+seeds, instead of one scenario at one seed. Each change listed in `tests/test_corpus.py` is proven to make it fail. The differential
 test compares generated programs against the previously released wheel in a separate process; a difference is a behaviour
 change and has to be declared in `tests/test_differential.py`. Tests that could hang run through
 `tests/_support.py::run_isolated`, which gives them a hard time limit in a fresh interpreter.

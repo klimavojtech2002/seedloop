@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-_COPIED_DIRS = ("src", "tests", "scripts", "docs")
+_COPIED_DIRS = ("src", "tests", "scripts", "docs", "examples")
 _COPIED_FILES = (
     "pyproject.toml",
     "MANIFEST.in",
@@ -65,7 +65,7 @@ def test_the_sdist_has_every_file_its_test_suite_reads_and_no_stray_ones(tmp_pat
         names = {name.split("/", 1)[1] for name in tar.getnames() if "/" in name}
 
     expected = set(_COPIED_FILES)
-    for folder in ("tests", "scripts", "docs"):
+    for folder in ("tests", "scripts", "docs", "examples"):
         expected |= {n for n in _files_below(tree / folder) if n not in _STRAYS}
     missing = sorted(expected - names)
     assert not missing, f"missing from the sdist: {missing[:10]}"

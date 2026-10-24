@@ -62,7 +62,7 @@ def test_scheduling_is_deterministic_across_runs() -> None:
 
 
 def test_replay_equivalence_interleaving() -> None:
-    # The determinism proof for this slice: two coroutines interleave identically every run.
+    # The determinism proof for the loop order: two coroutines interleave identically every run.
     first = _run_interleaved()
     second = _run_interleaved()
     assert first == second

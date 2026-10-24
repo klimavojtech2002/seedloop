@@ -1,6 +1,6 @@
-"""`world.run_for` / `world.run_until`: the time-advancing scenario primitives (0460).
+"""`world.run_for` / `world.run_until`: the time-advancing scenario primitives.
 
-`run_for`'s `faults` parameter is exercised in `test_fault_handles.py` (0470); this file covers the
+`run_for`'s `faults` parameter is exercised in `test_fault_handles.py`; this file covers the
 time-advance mechanics only.
 """
 
@@ -258,11 +258,11 @@ def test_invariant_still_fires_while_run_until_is_pending() -> None:
 def test_invariant_still_surfaces_with_a_started_node_still_pending() -> None:
     # test_invariant_still_fires_while_run_until_is_pending above uses a helper task that finishes
     # in the same step as the collision, so nothing is left pending at teardown -- the one
-    # condition that let a real defect through three prior audit rounds and a holistic release
-    # audit (0.4.0): a run_until predicate that itself raises resolves the scenario task through a
-    # callback scheduled one step after the after-step hooks run, one step later than an
-    # always()-hard-hook failure in the same collision; asyncio.run_until_complete's own internal
-    # completion callback for that resolution can then fire late, during World._drive's teardown
+    # condition that let a real defect through several reviews before 0.4.0: a run_until
+    # predicate that itself raises resolves the scenario task through a callback scheduled one
+    # step after the after-step hooks run, one step later than an always()-hard-hook failure in
+    # the same collision; asyncio.run_until_complete's own internal completion callback for that
+    # resolution can then fire late, during World._drive's teardown
     # run_until_complete, and stop it before its own target (the cancellation gather) is done --
     # surfacing a bare RuntimeError instead of the real InvariantError. A world.start()-ed node
     # that never returns on its own is what leaves teardown with real work still pending when this
@@ -361,7 +361,7 @@ def test_invariant_and_run_until_predicate_failing_the_same_step_registration_or
     assert isinstance(result.error, InvariantError)
 
 
-# --- replay equivalence: the determinism proof for this slice -------------------------------------
+# --- replay equivalence: the determinism proof for these primitives ------------------------------
 
 
 def test_replay_equivalence_run_for_and_run_until() -> None:

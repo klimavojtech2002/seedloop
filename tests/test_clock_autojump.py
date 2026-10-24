@@ -62,7 +62,7 @@ def _run_timed_timeline() -> list[object]:
 
 
 def test_replay_equivalence_timed() -> None:
-    # The determinism proof for this slice: the timed timeline is identical across runs, and the
+    # The determinism proof for this feature: the timed timeline is identical across runs, and the
     # two events that land at virtual time 3 are ordered by the (when, seq) tie-break (a's timer
     # was scheduled before b's).
     first = _run_timed_timeline()

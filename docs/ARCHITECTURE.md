@@ -1,13 +1,13 @@
 # Architecture
 
-How `seedloop` makes Python `asyncio` deterministic, how a run works end to end, and the phased build
-that gets there. Phases 1–3 are built: the deterministic core, the simulated network with fault
-injection, the invariant API, the non-determinism auditor, and the worked Raft demo. The optional
-Hypothesis integration ships as `seedloop[hypothesis]`; `world.run_for`/`run_until` (the time-advancing
-scenario primitives) and the seed-scheduled fault-handle constructors that plug into `run_for`
-(`world.partition()`/`slow_link()`/`crash()` as `Fault` objects, ADR-0022) are all implemented. The
-determinism boundary — what is controlled and what is deliberately not — is in [scope.md](scope.md), and
-the reasoning behind the non-obvious choices is in [decisions.md](decisions.md).
+How `seedloop` makes Python `asyncio` deterministic, and how a run works end to end. It consists of the
+deterministic core, the simulated network with fault injection, the invariant API, the non-determinism
+auditor, and a worked Raft demo. The optional Hypothesis integration ships as `seedloop[hypothesis]`;
+`world.run_for`/`run_until` are the time-advancing scenario primitives, and the seed-scheduled fault
+handles that plug into `run_for` (`world.partition()`/`slow_link()`/`crash()` as `Fault` objects,
+ADR-0022) complete the set. The determinism boundary — what is controlled and what is deliberately not —
+is in [scope.md](scope.md), and the reasoning behind the non-obvious choices is in
+[decisions.md](decisions.md).
 
 ## The key fact that makes this tractable
 
@@ -19,22 +19,22 @@ stock CPython (`TimerHandle` compares the deadline alone), one thing seedloop ad
 nondeterminism enters the loop is `selector.select()` — the OS poll that decides which sockets are
 ready and when.
 
-So `seedloop` does not patch CPython or fight the runtime. It supplies a custom loop via
-`asyncio`'s `loop_factory` (the supported mechanism; the older event-loop *policy* API is deprecated and
-slated for removal in a future release) that replaces the one nondeterministic seam — the I/O poll —
-with a virtual scheduler, and drives time from a virtual clock. Because the rest of the loop is already
-deterministic, making it *seedable* is a matter of controlling that one seam plus the clock. This is
-the direct analogue of why Rust's `madsim` can swap out `tokio`: a single-threaded cooperative
-scheduler is replaceable in a way Go's thread-multiplexed scheduler is not.
+So `seedloop` does not patch CPython or fight the runtime. It supplies its own loop, a subclass of
+`asyncio.BaseEventLoop`, that replaces the one nondeterministic seam — the I/O poll — with a virtual
+scheduler, and drives time from a virtual clock. Because the rest of the loop is already deterministic,
+making it *seedable* is a matter of controlling that one seam plus the clock. This is the direct
+analogue of why Rust's `madsim` can swap out `tokio`: a single-threaded cooperative scheduler is
+replaceable in a way Go's thread-multiplexed scheduler is not.
 
-## How the custom loop attaches
+## How a run uses the loop
 
-`loop_factory` is a callable that returns the loop a run uses; `asyncio.Runner(loop_factory=...)` and
-`asyncio.run(coro, loop_factory=...)` both accept one (confirmed on the target CPython). seedloop's
-factory returns its deterministic loop, so user code that calls `asyncio.run` or awaits as usual never
-sees the swap — it talks to the standard `asyncio` API, and that API is now backed by the simulator.
+`check` and `replay` create a fresh deterministic loop for every seed and drive it themselves; user code
+does not call `asyncio.run`. The scenario is an `async` function that receives the run's `World`, and
+inside it ordinary `asyncio` code — `await`, `asyncio.sleep`, tasks, locks, queues — runs on the
+simulated loop through the standard API. The loop is not a public extension point: there is no factory
+to hand to `asyncio.run`, and a run cannot be started from inside another running event loop.
 
-The loop implements the slice of the `AbstractEventLoop` surface that `Task` and coroutines actually
+The loop implements the part of the `AbstractEventLoop` surface that `Task` and coroutines actually
 drive — `call_soon`, `call_later`, `call_at`, `time`, `create_task`/`create_future`, and exception
 handling — not the whole interface (the abstract base declares dozens of methods, most of them real-I/O
 entry points). The real-I/O methods (`sock_*`, `getaddrinfo`, `connect_*`, subprocess and signal
@@ -52,7 +52,7 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
 ```
                          ┌──────────────────────────────────────────────┐
                          │                  Controller                   │
-                         │   seed sweep · invariants · record / replay   │
+                         │   seed sweep · invariants · replay            │
                          └───────────────────────┬──────────────────────┘
                                                  │ runs one seed
                                                  ▼
@@ -74,10 +74,11 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
                          └──────────────────────────────────────────────┘
 ```
 
-- **Controller** — the outer driver. Runs a scenario across many seeds, checks the user's invariants
-  after each run, and on a failure reports the seed and supports replaying it. May use
-  [Hypothesis](https://hypothesis.readthedocs.io/) as the seed-generation and shrinking engine rather
-  than reinventing it.
+- **Controller** — the outer driver. Runs a scenario across many seeds and, on a failure, reports the
+  seed and supports replaying it. A failure is an exception from the run, including a violated
+  invariant (invariants are checked after every scheduling step, inside the run). The optional
+  [Hypothesis](https://hypothesis.readthedocs.io/) extra can drive seed exploration instead of a plain
+  sweep (ADR-0020).
 - **World** — everything for a single deterministic run, all derived from one seed: the loop, the
   clock, the RNG, the network, the fault schedule. The same seed yields the same World, hence the same
   timeline.
@@ -90,7 +91,7 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
 - **Simulated network** — the controllable seam. Nodes exchange messages through an in-memory
   transport, not real sockets; the seed decides latency, reordering, drops, and partitions.
 - **Fault scheduler** — turns "chaos" into a reproducible function of the seed: which links partition,
-  when, for how long, which node pauses.
+  when, for how long, which node crashes.
 
 ## How a run works
 
@@ -102,9 +103,9 @@ controller.check(scenario, seeds=N):
         - user code sends/receives via world.net
         - the loop advances tasks deterministically (FIFO); message delivery timing is seed-determined
         - the clock autojumps; faults fire on the seed's schedule
-     evaluate user invariants
-     if an invariant fails:
-        report seed S  →  controller.replay(scenario, seed=S) reproduces it exactly, forever
+        - invariants registered with world.always are checked after every step
+     if the run fails (a violated invariant, or any error from the scenario):
+        report seed S  →  controller.replay(scenario, seed=S) reproduces it exactly
 ```
 
 The guarantee is the equation **same seed → same timeline → same outcome**. A failure is therefore
@@ -123,27 +124,25 @@ The design is a port of proven systems, not speculation:
 `seedloop` is the assembly of these into `asyncio` — which, being single-threaded and FIFO, is an
 easier substrate than Go and a comparable one to Rust.
 
-## Phased build
+## What it is made of
 
-Each phase is independently useful, so the project delivers value before it is "finished."
+Each part is useful on its own, so a project can adopt as much as it needs.
 
-1. **Deterministic core** — the custom loop with deterministic scheduling, the virtual clock, seeded RNG,
-   and seed replay. *Already useful on its own:* "make your `asyncio` tests reproducible and instant."
-2. **Simulated network + fault injection** — the abstract transport with seeded latency, reordering,
-   loss, and partitions. *This is the DST payoff:* hunt for and reproduce partition/timing bugs.
-3. **Ergonomics** — the invariant/assertion API, Hypothesis integration for seed exploration and
-   shrinking, and a non-determinism auditor that flags entropy leaks (uncontrolled `os.urandom`, real
-   threads, real time) so users learn where their code steps outside the supported boundary.
-
-Three further additions have since landed, outside the original three-phase plan: a replay-stability pin
-that locks one canonical scenario's timeline in CI, the `world.run_for`/`run_until` time-advancing
-primitives, and the seed-scheduled fault-handle constructors (`world.partition()`/`slow_link()`/`crash()`)
-that plug into `run_for`. All are implemented and tested; see [decisions.md](decisions.md) ADR-0020
-through ADR-0022 for the reasoning behind each.
+- **Deterministic core** — the custom loop with deterministic scheduling, the virtual clock, seeded RNG,
+  and seed replay. On its own it makes `asyncio` tests reproducible and instant.
+- **Simulated network and fault injection** — the abstract transport with seeded latency, reordering,
+  loss, and partitions. This is what finds and reproduces partition and timing bugs.
+- **Ergonomics** — the invariant API, Hypothesis integration for seed exploration and shrinking, and a
+  non-determinism auditor that flags entropy leaks (uncontrolled `os.urandom`, real threads, real time)
+  so users learn where their code steps outside the supported boundary.
+- **Time and fault primitives** — `world.run_for`/`run_until` and the seed-scheduled fault handles
+  (`world.partition()`/`slow_link()`/`crash()`), see [decisions.md](decisions.md) ADR-0021 and
+  ADR-0022 for the reasoning behind each.
+- **A replay-stability pin** — a canonical scenario whose timeline is locked in CI.
 
 ## The demonstration
 
-The repository ships a worked example that is also the proof: a small Raft (or CRDT) implementation in
+The repository ships a worked example that is also the proof: a small Raft implementation in
 pure Python, run under `seedloop`, with a real concurrency bug found under partition and replayed from
 its seed — the same failure, every time. That is both the test of the framework and the thing a
 reviewer can run in one command.

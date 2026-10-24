@@ -4,8 +4,8 @@ Deterministic simulation testing for Python `asyncio`: run concurrent code throu
 seeded, reproducible timelines — varying message timing, injecting network faults and partitions —
 to find the concurrency bug that shows up once in a million runs, then replay it exactly from a seed.
 
-This is the FoundationDB / TigerBeetle / Antithesis style of reliability testing, until now available
-only in Rust, C++, and Java. `seedloop` brings it to Python as a `pip`-installable library.
+This is the FoundationDB / TigerBeetle / Antithesis style of reliability testing. `seedloop` brings it
+to Python's `asyncio` as a `pip`-installable library.
 
 [![CI](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml/badge.svg)](https://github.com/klimavojtech2002/seedloop/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/seedloop)](https://pypi.org/project/seedloop/)
@@ -28,34 +28,83 @@ pip install seedloop
 ```
 
 Write your protocol against an abstract transport ([sans-I/O](https://sans-io.readthedocs.io/)), and
-`seedloop` runs it inside a world it fully controls:
-
-`RaftNode` and `at_most_one_leader` below stand in for your own protocol code and invariant; every
-`world`/`seedloop` call shown runs on the current release.
+`seedloop` runs it inside a world it fully controls. The example below is
+[`examples/quickstart.py`](examples/quickstart.py) and runs as written: a client retries a request
+after 30 ms, the simulated network can take up to 40 ms for a request and its acknowledgement
+together, so on some seeds the client retries while the acknowledgement is still on its way, and a
+server with no memory of what it has handled applies the request twice.
 
 ```python
+from __future__ import annotations
+
 import asyncio
+
 import seedloop
 
 
-async def scenario(world: seedloop.World) -> None:
-    nodes = [RaftNode(addr, world.net) for addr in range(5)]
-    world.start(*nodes)
+class Server:
+    def __init__(self, world: seedloop.World, *, remember: bool) -> None:
+        self.endpoint = world.net.bind(1)
+        self.remember = remember
+        self.applied: list[int] = []  # request ids, in the order they were applied
 
-    world.always(lambda: at_most_one_leader(nodes), name="at-most-one-leader")
+    async def run(self) -> None:
+        while True:
+            sender, request_id = await self.endpoint.recv()
+            assert isinstance(request_id, int)
+            if not (self.remember and request_id in self.applied):
+                self.applied.append(request_id)
+            await self.endpoint.send(sender, request_id)  # acknowledge
 
-    await asyncio.sleep(2)
-    world.net.partition({0, 1}, {2, 3, 4})
-    await asyncio.sleep(2)
-    world.net.heal()
-    await asyncio.sleep(2)
+
+class Client:
+    def __init__(self, world: seedloop.World) -> None:
+        self.endpoint = world.net.bind(0)
+
+    async def run(self) -> None:
+        while True:
+            await self.endpoint.send(1, 7)
+            try:
+                await asyncio.wait_for(self.endpoint.recv(), timeout=0.03)
+            except TimeoutError:
+                continue  # no acknowledgement in time: send the request again
+            return
 
 
-# seedloop: failing seed=4823 (replay with seedloop.replay)
-seedloop.check(scenario, seeds=10_000)
+def make_scenario(*, remember: bool) -> seedloop.Scenario:
+    async def scenario(world: seedloop.World) -> None:
+        server, client = Server(world, remember=remember), Client(world)
+        world.start(server, client)
+        world.always(
+            lambda: len(server.applied) == len(set(server.applied)), name="applied-at-most-once"
+        )
+        await asyncio.sleep(1)
+
+    return scenario
+
+
+if __name__ == "__main__":
+    broken = seedloop.check(make_scenario(remember=False), seeds=200, on_failure="return")
+    print(f"server without memory: {broken.error!r} at seed={broken.failing_seed}")
+    assert broken.failing_seed is not None
+    try:
+        seedloop.replay(make_scenario(remember=False), seed=broken.failing_seed)
+    except seedloop.InvariantError:
+        print(f"replay of seed={broken.failing_seed}: the same failure, every time")
+    fixed = seedloop.check(make_scenario(remember=True), seeds=200, on_failure="return")
+    print(
+        f"server that remembers: {fixed.checked} seeds checked, failing seed: {fixed.failing_seed}"
+    )
 ```
 
-`seedloop.replay(scenario, seed=4823)` re-runs that exact timeline as many times as needed to debug
+```
+$ python examples/quickstart.py
+server without memory: InvariantError("invariant 'applied-at-most-once' violated at t=0.045590860354622995") at seed=9
+replay of seed=9: the same failure, every time
+server that remembers: 200 seeds checked, failing seed: None
+```
+
+`seedloop.replay(scenario, seed=...)` re-runs that exact timeline as many times as needed to debug
 it. Full API, including the seed-scheduled fault handles (`world.partition()`/`slow_link()`/`crash()`
 passed to `world.run_for`), in [docs/api.md](docs/api.md).
 
@@ -102,7 +151,7 @@ says so rather than pretending otherwise. Full boundary in [docs/scope.md](docs/
 (`_run_once`'s `select()`), rather than reimplementing scheduling from scratch: asyncio's own
 `call_soon` FIFO ready queue and Task/Future machinery are already deterministic, so the loop
 inherits them and only cuts the one seam that isn't (ADR-0013 in
-[docs/decisions.md](docs/decisions.md)). The rest of the design log — 22 decisions, each with
+[docs/decisions.md](docs/decisions.md)). The rest of the design log — every decision, each with
 what was considered and rejected — is there too.
 
 ## Status
@@ -115,14 +164,13 @@ demo. The 4 gates (lint, format, types, tests) run green on Linux/macOS/Windows 
 
 One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
 `always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario
-coroutine returns and before teardown cancels it. Pre-existing since `v0.3.2`, not introduced by
-0.4.0. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md).
+coroutine returns and before teardown cancels it. Present since `v0.3.2`. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
 
-Full API in [docs/api.md](docs/api.md), phased build in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Full API in [docs/api.md](docs/api.md), design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how `asyncio` is made deterministic, and the phased build.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how `asyncio` is made deterministic.
 - [docs/api.md](docs/api.md) — the public API: `World`, `check`/`replay`, the transport, faults.
 - [docs/internals.md](docs/internals.md) — the loop, virtual clock, entropy control, network and fault scheduling.
 - [docs/network.md](docs/network.md) — the simulated transport and fault model.
