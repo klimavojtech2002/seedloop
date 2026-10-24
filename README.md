@@ -156,15 +156,18 @@ what was considered and rejected — is there too.
 
 ## Status
 
-`seedloop 0.4.0` is live on PyPI: the deterministic core, simulated network with fault injection,
+`seedloop 0.4.1` is live on PyPI: the deterministic core, simulated network with fault injection,
 `world.always` invariants, the non-determinism auditor, `run_for`/`run_until`, seed-scheduled fault
 handles (`partition()`/`slow_link()`/`crash()`), the optional Hypothesis integration, and the Raft
 demo. The 4 gates (lint, format, types, tests) run green on Linux/macOS/Windows × Python
-3.12–3.14, and a mutation-sweep gate runs on Windows.
+3.12–3.14. A mutation-sweep gate runs on Windows, generated programs are compared with the previous
+release in every CI run, and the built source distribution runs its own test suite.
 
 One limitation is disclosed rather than hidden: a task started with `world.start()` can violate an
 `always()` invariant, uncaught, in a narrow one-scheduling-step window right after the scenario
-coroutine returns and before teardown cancels it. Present since `v0.3.2`. Full detail in the "Planned / deferred" section of [docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
+coroutine returns and before teardown cancels it. Present since `v0.3.2`. Full detail in the
+"Planned / deferred" section of
+[docs/decisions.md](docs/decisions.md#planned--deferred-decisions).
 
 Full API in [docs/api.md](docs/api.md), design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
