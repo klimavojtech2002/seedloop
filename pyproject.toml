@@ -37,10 +37,10 @@ hypothesis = ["hypothesis>=6"]
 dev = [
     "ruff==0.16.0",
     "mypy>=1.10",
-    "pytest>=8",
+    "pytest>=9",
     "pytest-timeout>=2",
     "packaging>=23",
-    "pytest-randomly>=3",
+    "pytest-randomly>=5",
     "build>=1",
     "seedloop[hypothesis]",
 ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 import weakref
@@ -42,6 +43,11 @@ def _no_unclosed_loops(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     runs, and the ``ResourceWarning`` then lands on whichever test is running. Remembering each loop
     when it is created lets the end of the test that made it say so, without waiting for the
     collector.
+
+    A task that a test leaves pending on purpose (a teardown that deadlocks) has the same problem:
+    when the collector frees it, asyncio logs "Task was destroyed but it is pending!", and that
+    call can land inside a later test's audit window, where reading the clock for the log record
+    raises. So the log is switched off for the tasks the test leaves behind.
     """
     created: list[weakref.ref[DeterministicLoop]] = []
     original_init = DeterministicLoop.__init__
@@ -52,7 +58,11 @@ def _no_unclosed_loops(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
     monkeypatch.setattr(DeterministicLoop, "__init__", remembering_init)
     yield
-    open_loops = [loop for ref in created if (loop := ref()) is not None and not loop.is_closed()]
+    alive = [loop for ref in created if (loop := ref()) is not None]
+    for loop in alive:
+        for task in asyncio.all_tasks(loop):
+            task._log_destroy_pending = False  # type: ignore[attr-defined]  # asyncio's own switch
+    open_loops = [loop for loop in alive if not loop.is_closed()]
     for loop in open_loops:
         loop.close()  # so that it cannot warn again later, in another test
     if open_loops:

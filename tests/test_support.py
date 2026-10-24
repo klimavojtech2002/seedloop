@@ -180,15 +180,20 @@ def test_a_grandchild_that_holds_the_pipes_after_the_child_exited_is_killed() ->
 def test_an_interruption_kills_the_child(monkeypatch: pytest.MonkeyPatch) -> None:
     # Ctrl-C (or any exception) while waiting must not leave the child running.
     started: list[int] = []
+    children: list[subprocess.Popen[str]] = []
 
     def interrupted(self: subprocess.Popen[str], *args: object, **kwargs: object) -> NoReturn:
         started.append(self.pid)
+        children.append(self)
         raise KeyboardInterrupt
 
     monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
     with pytest.raises(KeyboardInterrupt):
         run_isolated("import time; time.sleep(300)", timeout=30)
     monkeypatch.undo()
+    (child,) = children
+    assert child.stdout is not None and child.stdout.closed, "the output pipe was left open"
+    assert child.stderr is not None and child.stderr.closed, "the error pipe was left open"
     (pid,) = started
     deadline = time.monotonic() + 15
     while pid_alive(pid) and time.monotonic() < deadline:
