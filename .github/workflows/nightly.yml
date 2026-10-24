@@ -29,4 +29,4 @@ jobs:
       - name: Differential test against the previous release (1500 new programs each night)
         run: |
           export SEEDLOOP_DIFF_START=$(( (${{ github.run_number }} % 1000) * 1500 ))
-          pytest -q -m differential
+          pytest -q -p no:randomly -m differential

@@ -72,8 +72,17 @@ change.
 
 A tool that hunts flaky tests may not be flaky itself. The suite is seeded and does not depend on test
 order: tests that involve randomness fix their seed, the timeline assertions are exact, and no test
-relies on another's side effects. It passes with its files run in reverse order; CI does not randomize
-the order. A flaky result in seedloop's own CI is treated as a defect in seedloop, not retried away.
+relies on another's side effects. To keep that true, the tests run in a random order (`pytest-randomly`),
+and every run prints the order's seed (`random order seed: N`) so a failure can be repeated with
+`pytest -p randomly --randomly-seed=N`. The checks whose results must be comparable between runs (the
+mutation gate, the `meta` and `differential` jobs, and the release gates) use the file order. A flaky
+result in seedloop's own CI is treated as a defect in seedloop, not retried away.
+
+The suite is also strict. A warning is an error (`filterwarnings = ["error"]`), as are unknown markers and
+unknown configuration keys. A test that leaves a `DeterministicLoop` open fails, and it is that test that
+fails: a loop can be freed only when Python's cyclic collector next runs, so without the check the resulting
+`ResourceWarning` would be reported against a random later test. `tests/test_strictness.py` runs a child
+`pytest` with this project's configuration to prove each of these.
 
 ## CI matrix
 

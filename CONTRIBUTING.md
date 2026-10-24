@@ -32,6 +32,11 @@ pytest -q               # tests, including replay-equivalence and boundary tests
 pytest -q -k <name>     # a single test while iterating
 ```
 
+The suite is strict: a warning fails the test that raises it, an unknown marker or option is an error, and
+a test that leaves an event loop open fails (build worlds with the `make_world` fixture). Tests run in a
+random order, and every run prints the seed; to repeat a run that failed, use the printed
+`pytest -p randomly --randomly-seed=<seed>`, or `-p no:randomly` for the file order.
+
 A change is not done until every gate is green and its output has been read. New logic ships with tests,
 including the edge and adversarial cases; anything claiming determinism ships with a replay test that
 proves *same seed → same timeline* (see [docs/testing.md](docs/testing.md)).

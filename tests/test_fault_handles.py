@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import cast
 
 import pytest
@@ -111,11 +111,13 @@ def test_partition_leaves_delivery_unaffected_outside_the_window() -> None:
     assert kinds_by_mid == {0: "deliver", 1: "drop-partitioned", 2: "deliver"}
 
 
-def test_bipartition_always_splits_exactly_two_addresses_both_ways() -> None:
+def test_bipartition_always_splits_exactly_two_addresses_both_ways(
+    make_world: Callable[[int], World],
+) -> None:
     # With only two bound addresses, a genuine split has exactly one address per side; the
     # re-draw-until-non-empty loop must never give up early (And instead of the intended check)
     # nor reject the case outright (an off-by-one on the "needs >= 2" guard).
-    world = World(0)
+    world = make_world(0)
     world.net.bind(1)
     world.net.bind(2)
     for _ in range(20):
@@ -720,10 +722,12 @@ def test_crash_needs_a_bound_address() -> None:
 # --- composition / registry independence (white-box: ADR-0022) -----------------------------
 
 
-def test_fault_partitions_do_not_clobber_each_other_on_heal() -> None:
+def test_fault_partitions_do_not_clobber_each_other_on_heal(
+    make_world: Callable[[int], World],
+) -> None:
     # Two independently-scheduled fault partitions, overlapping in id-space: one healing must not
     # restore reachability the other one is still cutting.
-    world = World(0)
+    world = make_world(0)
     world.net.bind(1)
     world.net.bind(2)
     world.net.bind(3)
@@ -742,8 +746,10 @@ def test_fault_partitions_do_not_clobber_each_other_on_heal() -> None:
     assert world.net._reachable(2, 3) is True
 
 
-def test_scenario_partition_and_fault_partition_are_independent() -> None:
-    world = World(0)
+def test_scenario_partition_and_fault_partition_are_independent(
+    make_world: Callable[[int], World],
+) -> None:
+    world = make_world(0)
     for addr in (1, 2, 3, 4):
         world.net.bind(addr)
     world.net.partition({1}, {2})  # scenario-driven: cuts 1<->2 only
@@ -760,8 +766,10 @@ def test_scenario_partition_and_fault_partition_are_independent() -> None:
     assert world.net._reachable(3, 4) is True
 
 
-def test_slow_link_factors_compound_on_the_same_pair_only() -> None:
-    world = World(0)
+def test_slow_link_factors_compound_on_the_same_pair_only(
+    make_world: Callable[[int], World],
+) -> None:
+    world = make_world(0)
     world.net.bind(1)
     world.net.bind(2)
     world.net.bind(3)

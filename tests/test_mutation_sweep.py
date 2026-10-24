@@ -84,7 +84,7 @@ def make_project(tmp_path: Path, module: str = MODULE, timeout: float = 10.0) ->
         root=tmp_path,
         package="mini",
         exclude_dirs=(),
-        test_args=("-q", "-x", "-p", "no:cacheprovider"),
+        test_args=("-q", "-x", "-p", "no:cacheprovider", "-p", "no:randomly"),
         timeout=timeout,
     )
 
