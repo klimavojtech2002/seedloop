@@ -74,8 +74,9 @@ method-by-method surface and the autojump algorithm are in [internals.md](intern
                          └──────────────────────────────────────────────┘
 ```
 
-- **Controller** — the outer driver. Runs a scenario across many seeds, checks the user's invariants
-  after each run, and on a failure reports the seed and supports replaying it. The optional
+- **Controller** — the outer driver. Runs a scenario across many seeds and, on a failure, reports the
+  seed and supports replaying it. A failure is an exception from the run, including a violated
+  invariant (invariants are checked after every scheduling step, inside the run). The optional
   [Hypothesis](https://hypothesis.readthedocs.io/) extra can drive seed exploration instead of a plain
   sweep (ADR-0020).
 - **World** — everything for a single deterministic run, all derived from one seed: the loop, the
@@ -102,9 +103,9 @@ controller.check(scenario, seeds=N):
         - user code sends/receives via world.net
         - the loop advances tasks deterministically (FIFO); message delivery timing is seed-determined
         - the clock autojumps; faults fire on the seed's schedule
-     evaluate user invariants
-     if an invariant fails:
-        report seed S  →  controller.replay(scenario, seed=S) reproduces it exactly, forever
+        - invariants registered with world.always are checked after every step
+     if the run fails (a violated invariant, or any error from the scenario):
+        report seed S  →  controller.replay(scenario, seed=S) reproduces it exactly
 ```
 
 The guarantee is the equation **same seed → same timeline → same outcome**. A failure is therefore
@@ -135,7 +136,7 @@ Each part is useful on its own, so a project can adopt as much as it needs.
   non-determinism auditor that flags entropy leaks (uncontrolled `os.urandom`, real threads, real time)
   so users learn where their code steps outside the supported boundary.
 - **Time and fault primitives** — `world.run_for`/`run_until` and the seed-scheduled fault handles
-  (`world.partition()`/`slow_link()`/`crash()`), see [decisions.md](decisions.md) ADR-0020 through
+  (`world.partition()`/`slow_link()`/`crash()`), see [decisions.md](decisions.md) ADR-0021 and
   ADR-0022 for the reasoning behind each.
 - **A replay-stability pin** — a canonical scenario whose timeline is locked in CI.
 
