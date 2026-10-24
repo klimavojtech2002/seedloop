@@ -127,6 +127,9 @@ def run(
         # Also after a normal exit: nothing the command started may outlive it.
         job.kill(process)
         job.reap(process)
+        for pipe in (process.stdout, process.stderr):
+            if pipe is not None:
+                pipe.close()  # an interrupted wait leaves the pipes open otherwise
         job.close()
 
 
