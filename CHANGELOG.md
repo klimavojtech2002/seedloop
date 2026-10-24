@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-10-24
+
+A run now starts, runs and ends in a defined way on every path, and the packaging and the documents match
+what the code does.
+
 ### Added
 - `examples/quickstart.py`: a runnable example that finds a retry bug with a seed sweep, replays it, and
   shows the fixed version passing. The README shows it as written, and the test suite runs it.
@@ -147,7 +152,8 @@ The deterministic core — reproducible, instant `asyncio` runs.
   seed=...)`. A scenario runs against a seeded `World` (its `rng`, virtual clock, and timeline); `check`
   sweeps seeds and reports the first failing one; `replay` reproduces that seed's run identically.
 
-[Unreleased]: https://github.com/klimavojtech2002/seedloop/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/klimavojtech2002/seedloop/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/klimavojtech2002/seedloop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/klimavojtech2002/seedloop/compare/v0.3.0...v0.3.1

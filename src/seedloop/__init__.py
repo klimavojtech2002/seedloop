@@ -43,4 +43,4 @@ __all__ = [
     "ensure_hash_seed",
     "replay",
 ]
-__version__ = "0.4.1rc1"
+__version__ = "0.4.1"
