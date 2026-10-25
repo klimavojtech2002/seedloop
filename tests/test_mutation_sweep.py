@@ -115,13 +115,13 @@ def test_a_changed_line_changes_its_key(tmp_path: Path) -> None:
     assert any("over" in k for k in changed)
 
 
-def test_shards_partition_the_mutants(tmp_path: Path) -> None:
+@pytest.mark.parametrize("count", [1, 2, 3, 5])
+def test_shards_partition_the_mutants(tmp_path: Path, count: int) -> None:
     mutants = ms.enumerate_mutants(make_project(tmp_path))
-    for count in (1, 2, 3, 5):
-        shards = [ms.shard_of(mutants, i, count) for i in range(1, count + 1)]
-        flat = [m.key for shard in shards for m in shard]
-        assert sorted(flat) == sorted(m.key for m in mutants)
-        assert len(flat) == len(set(flat))
+    shards = [ms.shard_of(mutants, i, count) for i in range(1, count + 1)]
+    flat = [m.key for shard in shards for m in shard]
+    assert sorted(flat) == sorted(m.key for m in mutants)
+    assert len(flat) == len(set(flat))
 
 
 @pytest.mark.parametrize("bad", ["0/3", "4/3", "x/3", "2", "2/0"])

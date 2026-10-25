@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import cast
+from typing import Any, cast
+
+import pytest
 
 import seedloop
 from _sim import event_kinds
@@ -406,13 +408,14 @@ def test_started_node_is_cancelled_at_teardown() -> None:
     assert node.cancelled
 
 
-def test_loss_and_duplicate_must_be_probabilities() -> None:
-    async def bad_loss(world: World) -> None:
-        world.net.bind(1, loss=50)  # a "50%" typo, not a probability
+@pytest.mark.parametrize(
+    "bad",
+    [{"loss": 50}, {"duplicate": -1}],  # 50 is a "50%" typo, not a probability
+    ids=["loss", "duplicate"],
+)
+def test_loss_and_duplicate_must_be_probabilities(bad: dict[str, Any]) -> None:
+    async def scenario(world: World) -> None:
+        world.net.bind(1, **bad)
 
-    async def bad_duplicate(world: World) -> None:
-        world.net.bind(1, duplicate=-1)
-
-    for scenario in (bad_loss, bad_duplicate):
-        result = seedloop.check(scenario, seeds=1, on_failure="return")
-        assert isinstance(result.error, seedloop.SeedloopError)
+    result = seedloop.check(scenario, seeds=1, on_failure="return")
+    assert isinstance(result.error, seedloop.SeedloopError)

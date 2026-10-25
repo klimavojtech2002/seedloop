@@ -111,8 +111,12 @@ class _QuietLeak(EntropyLeakError):
     pass
 
 
-def test_a_subclass_round_trips_as_its_own_type() -> None:
-    for original in (_StrictInvariant("inv", 2.0), _QuietLeak("time.time")):
-        clone = pickle.loads(pickle.dumps(original))
-        assert type(clone) is type(original)
-        assert clone.args == original.args
+@pytest.mark.parametrize(
+    "original",
+    [_StrictInvariant("inv", 2.0), _QuietLeak("time.time")],
+    ids=["invariant", "leak"],
+)
+def test_a_subclass_round_trips_as_its_own_type(original: SeedloopError) -> None:
+    clone = pickle.loads(pickle.dumps(original))
+    assert type(clone) is type(original)
+    assert clone.args == original.args

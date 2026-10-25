@@ -66,10 +66,10 @@ def test_substream_changes_with_seed() -> None:
     assert substream(1, "net").random() != substream(2, "net").random()
 
 
-def test_substream_accepts_any_int_seed() -> None:
+@pytest.mark.parametrize("seed", [-1, 0, 2**70, -(2**70)])
+def test_substream_accepts_any_int_seed(seed: int) -> None:
     # Canonical text encoding (not fixed-width bytes) accepts negative and >64-bit seeds.
-    for seed in (-1, 0, 2**70, -(2**70)):
-        assert isinstance(substream(seed, "net").random(), float)
+    assert isinstance(substream(seed, "net").random(), float)
 
 
 # --- CSPRNG shim (ADR-0010) ---

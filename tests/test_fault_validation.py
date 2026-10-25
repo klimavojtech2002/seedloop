@@ -15,17 +15,17 @@ from seedloop._world import World
 from seedloop.errors import SeedloopError
 
 
-def test_fault_handles_are_frozen() -> None:
+@pytest.mark.parametrize(
+    "handle",
+    [seedloop.PartitionFault(), seedloop.SlowLinkFault(), seedloop.CrashFault()],
+    ids=["partition", "slow_link", "crash"],
+)
+def test_fault_handles_are_frozen(handle: seedloop.Fault) -> None:
     # Immutable value objects (docs/api.md, ADR-0022): a handle records what was pinned and does
     # nothing on its own, which only holds if it can't be mutated after construction.
-    for handle in (
-        seedloop.PartitionFault(),
-        seedloop.SlowLinkFault(),
-        seedloop.CrashFault(),
-    ):
-        field_name = dataclasses.fields(handle)[0].name
-        with pytest.raises(dataclasses.FrozenInstanceError):
-            setattr(handle, field_name, None)
+    field_name = dataclasses.fields(handle)[0].name
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        setattr(handle, field_name, None)
 
 
 def test_unrecognized_fault_type_raises_before_seconds_advances() -> None:

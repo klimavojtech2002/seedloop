@@ -8,8 +8,12 @@ import random
 import secrets
 import threading
 import time
+from collections.abc import Callable
+
+import pytest
 
 import seedloop
+from seedloop._audit import _ENTROPY_SURFACES
 from seedloop._run import _run_one
 from seedloop._world import World
 
@@ -87,49 +91,60 @@ def test_audit_covers_every_entropy_drawing_random_function() -> None:
     assert set(_RANDOM_FUNCS) == drawing
 
 
-def test_cpu_clocks_trip_under_audit() -> None:
-    # process_time/thread_time and POSIX clock_gettime (and their _ns forms) are real,
-    # nondeterministic clocks with no pure form, so they must trip like monotonic/perf_counter. The
-    # POSIX-only names are absent on Windows and skipped there; CI exercises them on Linux/macOS.
-    for name in (
+@pytest.mark.parametrize(
+    "name",
+    [
         "process_time",
         "process_time_ns",
         "thread_time",
         "thread_time_ns",
         "clock_gettime",
         "clock_gettime_ns",
-    ):
-        if not hasattr(time, name):  # pragma: no cover - platform-dependent
-            continue
-        result = seedloop.check(
-            _scenario_calling(lambda n=name: getattr(time, n)()),
-            seeds=1,
-            on_failure="return",
-            audit=True,
-        )
-        assert isinstance(result.error, seedloop.EntropyLeakError), name
-        assert result.error.source == f"time.{name}", name
+    ],
+)
+def test_cpu_clocks_trip_under_audit(name: str) -> None:
+    # process_time/thread_time and POSIX clock_gettime (and their _ns forms) are real,
+    # nondeterministic clocks with no pure form, so they must trip like monotonic/perf_counter. The
+    # POSIX-only names are absent on Windows and skipped there; CI exercises them on Linux/macOS.
+    if not hasattr(time, name):
+        pytest.skip(f"time.{name} does not exist on this platform")
+    result = seedloop.check(
+        _scenario_calling(lambda: getattr(time, name)()),
+        seeds=1,
+        on_failure="return",
+        audit=True,
+    )
+    assert isinstance(result.error, seedloop.EntropyLeakError), name
+    assert result.error.source == f"time.{name}", name
 
 
-def test_current_time_calendar_functions_trip_only_in_their_now_form() -> None:
-    # gmtime()/localtime()/ctime()/asctime()/strftime(fmt) read the *current* time and must trip;
-    # given an explicit timestamp the same functions are pure conversions and must still work, so
-    # the tripwire fires on the now-reading form only (no false positive on a pure convert).
-    now_forms = (
+@pytest.mark.parametrize(
+    "now_form",
+    [
         lambda: time.gmtime(),
         lambda: time.localtime(),
         lambda: time.ctime(),
         lambda: time.asctime(),
         lambda: time.strftime("%Y"),
-    )
-    for fn in now_forms:
-        result = seedloop.check(_scenario_calling(fn), seeds=1, on_failure="return", audit=True)
-        assert isinstance(result.error, seedloop.EntropyLeakError)
+    ],
+    ids=["gmtime", "localtime", "ctime", "asctime", "strftime"],
+)
+def test_current_time_calendar_functions_trip_only_in_their_now_form(
+    now_form: Callable[[], object],
+) -> None:
+    # gmtime()/localtime()/ctime()/asctime()/strftime(fmt) read the *current* time and must trip;
+    # the same functions given a timestamp are pure conversions (next test), so the tripwire fires
+    # on the now-reading form only.
+    result = seedloop.check(_scenario_calling(now_form), seeds=1, on_failure="return", audit=True)
+    assert isinstance(result.error, seedloop.EntropyLeakError)
 
+
+def test_calendar_functions_given_a_timestamp_are_not_tripped() -> None:
     t0 = time.gmtime(0)
 
     async def pure_conversions(world: World) -> None:
-        # Explicit timestamps: deterministic, must not trip under audit.
+        # Explicit timestamps: deterministic, must not trip under audit (no false positive on a
+        # pure conversion).
         world.record(("gmtime", time.gmtime(0)))
         world.record(("localtime", time.localtime(0)))
         world.record(("ctime", time.ctime(0)))
@@ -139,19 +154,19 @@ def test_current_time_calendar_functions_trip_only_in_their_now_form() -> None:
     seedloop.replay(pure_conversions, seed=1, audit=True)  # must not raise
 
 
-def test_every_listed_random_function_actually_trips() -> None:
+@pytest.mark.parametrize(
+    "attr", [n.split(".", 1)[1] for _, _, n in _ENTROPY_SURFACES if n.startswith("random.")]
+)
+def test_every_listed_random_function_actually_trips(attr: str) -> None:
     # Each listed random.* must raise under audit; the tripwire ignores args, so no-arg calls trip.
-    from seedloop._audit import _ENTROPY_SURFACES
-
-    for attr in (n.split(".", 1)[1] for _, _, n in _ENTROPY_SURFACES if n.startswith("random.")):
-        result = seedloop.check(
-            _scenario_calling(lambda a=attr: getattr(random, a)()),
-            seeds=1,
-            on_failure="return",
-            audit=True,
-        )
-        assert isinstance(result.error, seedloop.EntropyLeakError), attr
-        assert result.error.source == f"random.{attr}", attr
+    result = seedloop.check(
+        _scenario_calling(lambda: getattr(random, attr)()),
+        seeds=1,
+        on_failure="return",
+        audit=True,
+    )
+    assert isinstance(result.error, seedloop.EntropyLeakError), attr
+    assert result.error.source == f"random.{attr}", attr
 
 
 def test_real_thread_trips_as_boundary() -> None:
