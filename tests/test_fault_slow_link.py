@@ -9,23 +9,10 @@ from typing import cast
 import pytest
 
 import seedloop
+from _sim import spam
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
-
-
-async def _spam(
-    world: World,
-    eps: dict[int, seedloop.Endpoint],
-    src: int,
-    dst: int,
-    *,
-    count: int = 40,
-    interval: float = 0.05,
-) -> None:
-    for i in range(count):
-        await eps[src].send(dst, i)
-        await asyncio.sleep(interval)
 
 
 def _pair_latencies(timeline: Sequence[object], src: int, dst: int) -> list[float]:
@@ -42,8 +29,8 @@ def test_slow_link_unresolved_multiplies_latency_reproducibly() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2, 3)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 2, 3)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 2, 3)),
         ]
         await world.run_for(seconds=2, faults=[world.slow_link()])
         await asyncio.gather(*tasks)
@@ -59,8 +46,8 @@ def test_slow_link_pinned_pair_scopes_to_that_pair_only() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2, 3)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 2, 3)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 2, 3)),
         ]
         await world.run_for(seconds=2, faults=[world.slow_link(0, 1)])
         await asyncio.gather(*tasks)
@@ -124,8 +111,8 @@ def test_slow_link_pinned_a_resolves_b_from_bound_addresses() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 0, 2)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 0, 2)),
         ]
         await world.run_for(seconds=2, faults=[world.slow_link(a=0)])
         await asyncio.gather(*tasks)
@@ -140,8 +127,8 @@ def test_slow_link_pinned_b_resolves_a_from_bound_addresses() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 1, 0)),
-            asyncio.ensure_future(_spam(world, eps, 2, 0)),
+            asyncio.ensure_future(spam(world, eps, 1, 0)),
+            asyncio.ensure_future(spam(world, eps, 2, 0)),
         ]
         await world.run_for(seconds=2, faults=[world.slow_link(b=0)])
         await asyncio.gather(*tasks)
@@ -172,7 +159,7 @@ def test_slow_link_pinned_b_never_resolves_a_to_the_same_address() -> None:
 def test_slow_link_works_with_exactly_two_bound_addresses() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1)}
-        task = asyncio.ensure_future(_spam(world, eps, 0, 1))
+        task = asyncio.ensure_future(spam(world, eps, 0, 1))
         await world.run_for(seconds=2, faults=[world.slow_link()])
         await task
 
@@ -222,7 +209,7 @@ def test_slow_link_pinned_valid_factor_is_accepted_and_applied() -> None:
     # World.slow_link misfiring on well-formed input) and must actually apply.
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1)}
-        task = asyncio.ensure_future(_spam(world, eps, 0, 1))
+        task = asyncio.ensure_future(spam(world, eps, 0, 1))
         await world.run_for(seconds=2, faults=[world.slow_link(0, 1, factor=5.0)])
         await task
 
@@ -237,7 +224,7 @@ def test_slow_link_multiplies_duplicate_latency_too() -> None:
     async def scenario(world: World) -> None:
         a = world.net.bind(0, duplicate=1.0)
         world.net.bind(1)
-        task = asyncio.ensure_future(_spam(world, {0: a}, 0, 1, count=20, interval=0.1))
+        task = asyncio.ensure_future(spam(world, {0: a}, 0, 1, count=20, interval=0.1))
         await world.run_for(seconds=2, faults=[world.slow_link(0, 1, factor=10.0)])
         await task
 

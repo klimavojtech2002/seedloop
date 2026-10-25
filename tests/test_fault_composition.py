@@ -7,23 +7,9 @@ from collections.abc import Callable
 
 import pytest
 
-import seedloop
+from _sim import spam
 from seedloop._run import _run_one
 from seedloop._world import World
-
-
-async def _spam(
-    world: World,
-    eps: dict[int, seedloop.Endpoint],
-    src: int,
-    dst: int,
-    *,
-    count: int = 40,
-    interval: float = 0.05,
-) -> None:
-    for i in range(count):
-        await eps[src].send(dst, i)
-        await asyncio.sleep(interval)
 
 
 def test_fault_partitions_do_not_clobber_each_other_on_heal(
@@ -94,8 +80,8 @@ def test_replay_equivalence_across_all_three_fault_kinds() -> None:
         eps = {a: world.net.bind(a, loss=0.1, duplicate=0.1) for a in (0, 1, 2, 3, 4)}
         world.always(lambda: True, name="always-true")
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 2, 3)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 2, 3)),
         ]
         await world.run_for(
             seconds=2,

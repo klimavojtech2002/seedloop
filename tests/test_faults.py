@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Sequence
 from typing import cast
 
 import seedloop
+from _sim import event_kinds
 from seedloop._entropy import csprng_shim, substream
 from seedloop._run import _run_one
 from seedloop._world import World
@@ -22,10 +22,6 @@ def _capture_timeline(scenario: seedloop.Scenario, seed: int) -> tuple[object, .
     return world.timeline
 
 
-def _kinds(timeline: Sequence[object]) -> list[str]:
-    return [str(cast("tuple[object, ...]", e)[1]) for e in timeline]  # the event-kind field
-
-
 def test_loss_drops_messages_reproducibly() -> None:
     async def scenario(world: World) -> None:
         a = world.net.bind(1, loss=0.5)
@@ -37,7 +33,7 @@ def test_loss_drops_messages_reproducibly() -> None:
     first = _run_one(scenario, 3)
     second = _run_one(scenario, 3)
     assert first == second  # same seed → same drops
-    kinds = _kinds(first)
+    kinds = event_kinds(first)
     assert "drop" in kinds and "deliver" in kinds  # some dropped, some delivered
     assert 0 < kinds.count("drop") < 20  # loss=0.5 drops a strict subset
 
@@ -50,7 +46,7 @@ def test_no_loss_drops_nothing() -> None:
             await a.send(2, i)
         await asyncio.sleep(1)
 
-    assert "drop" not in _kinds(_run_one(scenario, 1))
+    assert "drop" not in event_kinds(_run_one(scenario, 1))
 
 
 def test_duplication_delivers_twice() -> None:
@@ -93,7 +89,7 @@ def test_partition_cuts_then_heal_restores() -> None:
     seedloop.replay(scenario, seed=1)
     assert got == [(1, "through")]
     # The cut message shows as drop-partitioned in the timeline; the second as deliver.
-    kinds = _kinds(_run_one(scenario, 1))
+    kinds = event_kinds(_run_one(scenario, 1))
     assert "drop-partitioned" in kinds
 
 
@@ -201,7 +197,9 @@ def test_partition_bug_is_found_and_replays() -> None:
     first = _capture_timeline(_naive_request_ack, 0)
     second = _capture_timeline(_naive_request_ack, 0)
     assert first == second  # the actual failing timeline replays identically...
-    assert _kinds(first).count("drop-partitioned") == 1  # ...and it is the partition that cut it
+    assert (
+        event_kinds(first).count("drop-partitioned") == 1
+    )  # ...and it is the partition that cut it
 
 
 async def _lossy_request_ack(world: World) -> None:
@@ -222,7 +220,7 @@ def test_sweep_finds_a_loss_triggered_failure() -> None:
     assert result.failing_seed is not None
     # The reported seed genuinely fails; a passing seed exists too (the sweep is meaningful).
     bad = _capture_timeline(_lossy_request_ack, result.failing_seed)
-    assert "drop" in _kinds(bad)  # the failing seed's request was lost
+    assert "drop" in event_kinds(bad)  # the failing seed's request was lost
     assert _capture_timeline(_lossy_request_ack, result.failing_seed) == bad  # replays identically
 
 
@@ -281,7 +279,7 @@ def test_partition_cuts_a_reliable_link() -> None:
 
     seedloop.replay(scenario, seed=1)
     assert got == [(1, "through")]
-    assert "drop-partitioned" in _kinds(_run_one(scenario, 1))
+    assert "drop-partitioned" in event_kinds(_run_one(scenario, 1))
 
 
 def test_unpartitioned_node_reaches_everyone() -> None:
@@ -303,7 +301,7 @@ def test_unpartitioned_node_reaches_everyone() -> None:
 
     seedloop.replay(scenario, seed=1)
     assert got == [(0, "through")]
-    assert "drop-partitioned" not in _kinds(_run_one(scenario, 1))
+    assert "drop-partitioned" not in event_kinds(_run_one(scenario, 1))
 
 
 def test_duplication_is_a_strict_subset() -> None:
@@ -317,7 +315,7 @@ def test_duplication_is_a_strict_subset() -> None:
             await a.send(1, i)
         await asyncio.sleep(1)
 
-    kinds = _kinds(_run_one(scenario, 1))
+    kinds = event_kinds(_run_one(scenario, 1))
     assert 0 < kinds.count("duplicate") < 20  # duplicate=0.5 duplicates some, not all
 
 

@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
 from typing import Any
 
 import pytest
 
+from _sim import spawn
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import DeadlockError, InvariantError
-
-_KEPT: list[asyncio.Future[None]] = []
-
-
-def _spawn(coro: Coroutine[Any, Any, None]) -> None:
-    # A task nobody references can be collected mid-run; keep it for the life of the test process.
-    _KEPT.append(asyncio.ensure_future(coro))
 
 
 def _timeline(scenario: Any) -> tuple[str, list[Any]]:
@@ -95,7 +88,7 @@ def test_the_scenario_task_unwinds_before_the_nodes_are_cancelled() -> None:
             state["bad"] = True
 
         world.start(Node())
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -116,7 +109,7 @@ def test_a_shield_at_the_end_of_the_scenario_does_not_hold_the_run() -> None:
             await asyncio.sleep(5)
             log.append("slow")
 
-        _spawn(asyncio.shield(slow()))  # type: ignore[arg-type]
+        spawn(asyncio.shield(slow()))  # type: ignore[arg-type]
 
     _run_one(scenario, 0)
     assert log == []  # the shielded work is cancelled with everything else, not awaited
@@ -195,7 +188,7 @@ def test_an_unstamped_task_is_cancelled_before_the_scenario_task(
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:

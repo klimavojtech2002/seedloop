@@ -3,23 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
-from typing import Any
 
 import pytest
 
 import seedloop
+from _sim import spawn
 from _support import run_isolated
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import InvariantError
-
-_KEPT: list[asyncio.Future[None]] = []
-
-
-def _spawn(coro: Coroutine[Any, Any, None]) -> None:
-    # A task nobody references can be collected mid-run; keep it for the life of the test process.
-    _KEPT.append(asyncio.ensure_future(coro))
 
 
 def _run_with_shared_hook_error(error: Exception, handler_raises: Exception) -> BaseException:
@@ -39,7 +31,7 @@ def _run_with_shared_hook_error(error: Exception, handler_raises: Exception) -> 
             await asyncio.sleep(1)
             state["fail"] = True
 
-        _spawn(trigger())
+        spawn(trigger())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -61,7 +53,7 @@ def test_interrupt_from_the_main_cancel_handler_is_not_lost() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -186,7 +178,7 @@ def test_a_failure_while_unwinding_carries_no_internal_note() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -207,7 +199,7 @@ def test_an_error_raised_by_the_cancel_handler_is_a_note_on_the_failure() -> Non
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -228,7 +220,7 @@ def test_a_cancel_handler_that_swallows_the_cancellation_adds_no_note() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -252,7 +244,7 @@ def test_an_error_whose_text_cannot_be_built_does_not_replace_the_failure() -> N
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -315,7 +307,7 @@ def test_a_teardown_error_is_noted_on_the_interrupt_that_ended_the_run() -> None
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:

@@ -3,33 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from typing import cast
 
 import pytest
 
 import seedloop
+from _sim import event_kinds, spam
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
-
-
-def _kinds(timeline: Sequence[object]) -> list[str]:
-    return [str(cast("tuple[object, ...]", e)[1]) for e in timeline]  # the event-kind field
-
-
-async def _spam(
-    world: World,
-    eps: dict[int, seedloop.Endpoint],
-    src: int,
-    dst: int,
-    *,
-    count: int = 40,
-    interval: float = 0.05,
-) -> None:
-    for i in range(count):
-        await eps[src].send(dst, i)
-        await asyncio.sleep(interval)
 
 
 def test_crash_unresolved_is_reproducible() -> None:
@@ -40,8 +22,8 @@ def test_crash_unresolved_is_reproducible() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2, 3)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 2, 3)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 2, 3)),
         ]
         await world.run_for(seconds=2, faults=[world.crash()])
         await asyncio.gather(*tasks)
@@ -49,7 +31,7 @@ def test_crash_unresolved_is_reproducible() -> None:
     first = _run_one(scenario, 0)
     second = _run_one(scenario, 0)
     assert first == second
-    kinds = _kinds(first)
+    kinds = event_kinds(first)
     assert "fault-crash" in kinds
     assert "drop-crashed" in kinds
     assert "deliver" in kinds  # traffic before the crash, or on the untouched pair, got through
@@ -79,7 +61,7 @@ def test_crash_no_restart_across_a_later_run_for_call() -> None:
 
     seedloop.replay(scenario, seed=1)
     assert delivered == []  # nothing ever reached the crashed node
-    kinds = _kinds(_run_one(scenario, 1))
+    kinds = event_kinds(_run_one(scenario, 1))
     assert kinds.count("drop-crashed") == 2
 
 
@@ -92,7 +74,7 @@ def test_crash_pinned_node_before_it_is_bound() -> None:
         await a.send(99, "into the void")
         await asyncio.sleep(0.5)
 
-    kinds = _kinds(_run_one(scenario, 1))
+    kinds = event_kinds(_run_one(scenario, 1))
     assert "drop-crashed" in kinds
 
 

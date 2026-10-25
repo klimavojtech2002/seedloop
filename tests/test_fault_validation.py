@@ -4,19 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-from collections.abc import Sequence
 from typing import cast
 
 import pytest
 
 import seedloop
+from _sim import event_kinds
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
-
-
-def _kinds(timeline: Sequence[object]) -> list[str]:
-    return [str(cast("tuple[object, ...]", e)[1]) for e in timeline]  # the event-kind field
 
 
 def test_fault_handles_are_frozen() -> None:
@@ -53,7 +49,7 @@ def test_a_later_invalid_fault_leaves_an_earlier_valid_one_uncommitted() -> None
             await world.run_for(seconds=1, faults=[world.partition(), object()])  # type: ignore[list-item]
         world.record("after-raise")
 
-    kinds = _kinds(_run_one(scenario, 0))
+    kinds = event_kinds(_run_one(scenario, 0))
     assert kinds == ["after-raise"]  # no fault-partition-scheduled/begin ever recorded
 
 
@@ -115,7 +111,7 @@ def test_crash_takes_precedence_over_a_concurrent_partition_cut() -> None:
         await a.send(2, "msg")
         await asyncio.sleep(0.5)
 
-    kinds = _kinds(_run_one(scenario, 0))
+    kinds = event_kinds(_run_one(scenario, 0))
     assert "drop-crashed" in kinds
     assert "drop-partitioned" not in kinds
 
@@ -139,7 +135,7 @@ def test_partition_heal_does_not_resurrect_an_overlapping_crashed_node() -> None
         )
         await task
 
-    kinds = _kinds(_run_one(scenario, 0))
+    kinds = event_kinds(_run_one(scenario, 0))
     assert "fault-partition-heal" in kinds
     assert kinds[-1] == "drop-crashed"  # the post-heal send, still cut by the unrelated crash
 
@@ -152,7 +148,7 @@ def test_run_for_zero_seconds_with_faults_is_not_an_error() -> None:
         world.net.bind(2)
         await world.run_for(seconds=0, faults=[world.partition(), world.slow_link(), world.crash()])
 
-    kinds = _kinds(_run_one(scenario, 0))
+    kinds = event_kinds(_run_one(scenario, 0))
     assert "fault-crash" in kinds  # ran to completion, no exception
 
 

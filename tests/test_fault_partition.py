@@ -3,41 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import cast
 
 import pytest
 
 import seedloop
+from _sim import event_kinds, spam
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
-
-
-def _kinds(timeline: Sequence[object]) -> list[str]:
-    return [str(cast("tuple[object, ...]", e)[1]) for e in timeline]  # the event-kind field
-
-
-async def _spam(
-    world: World,
-    eps: dict[int, seedloop.Endpoint],
-    src: int,
-    dst: int,
-    *,
-    count: int = 40,
-    interval: float = 0.05,
-) -> None:
-    for i in range(count):
-        await eps[src].send(dst, i)
-        await asyncio.sleep(interval)
 
 
 def test_partition_unresolved_cuts_and_heals_reproducibly() -> None:
     async def scenario(world: World) -> None:
         eps = {a: world.net.bind(a) for a in (0, 1, 2, 3)}
         tasks = [
-            asyncio.ensure_future(_spam(world, eps, 0, 1)),
-            asyncio.ensure_future(_spam(world, eps, 2, 3)),
+            asyncio.ensure_future(spam(world, eps, 0, 1)),
+            asyncio.ensure_future(spam(world, eps, 2, 3)),
         ]
         await world.run_for(seconds=2, faults=[world.partition()])
         await asyncio.gather(*tasks)
@@ -45,7 +28,7 @@ def test_partition_unresolved_cuts_and_heals_reproducibly() -> None:
     first = _run_one(scenario, 0)
     second = _run_one(scenario, 0)
     assert first == second  # same seed -> same split, same window
-    kinds = _kinds(first)
+    kinds = event_kinds(first)
     assert "fault-partition-begin" in kinds and "fault-partition-heal" in kinds
     assert "drop-partitioned" in kinds  # some crossed the cut
     assert "deliver" in kinds  # some got through (outside the window, or same-group)

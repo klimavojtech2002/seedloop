@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Coroutine
 from typing import Any
 
 import pytest
 
+from _sim import spawn
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import InvariantError
-
-_KEPT: list[asyncio.Future[None]] = []
-
-
-def _spawn(coro: Coroutine[Any, Any, None]) -> None:
-    # A task nobody references can be collected mid-run; keep it for the life of the test process.
-    _KEPT.append(asyncio.ensure_future(coro))
 
 
 def _timeline(scenario: Any) -> tuple[str, list[Any]]:
@@ -42,9 +35,9 @@ def _spawn_chain(world: World, names: list[str]) -> None:
     async def link(index: int) -> None:
         world.record(names[index])
         if index + 1 < len(names):
-            _spawn(link(index + 1))
+            spawn(link(index + 1))
 
-    _spawn(link(0))
+    spawn(link(0))
 
 
 def test_a_child_spawned_in_the_last_step_runs_before_teardown() -> None:
@@ -55,7 +48,7 @@ def test_a_child_spawned_in_the_last_step_runs_before_teardown() -> None:
             seen.append("child")
 
         await asyncio.sleep(0)
-        _spawn(child())
+        spawn(child())
 
     _run_one(scenario, 0)
     assert seen == ["child"]
@@ -70,9 +63,9 @@ def test_a_grandchild_runs_in_the_second_stop_step_but_not_a_third() -> None:
 
         async def child() -> None:
             seen.append("child")
-            _spawn(grandchild())
+            spawn(grandchild())
 
-        _spawn(child())
+        spawn(child())
 
     _run_one(scenario, 0)
     assert seen == ["child", "grandchild"]
@@ -85,13 +78,13 @@ def test_a_grandchild_runs_in_the_second_stop_step_but_not_a_third() -> None:
 
         async def grandchild() -> None:
             seen.append("grandchild")
-            _spawn(great())
+            spawn(great())
 
         async def child() -> None:
             seen.append("child")
-            _spawn(grandchild())
+            spawn(grandchild())
 
-        _spawn(child())
+        spawn(child())
 
     _run_one(too_deep, 0)
     assert seen == ["child", "grandchild"]  # the third generation is cancelled before it starts
@@ -126,7 +119,7 @@ def test_the_stop_steps_do_not_advance_the_clock() -> None:
             await asyncio.sleep(5)
             times.append(world.now())
 
-        _spawn(later())
+        spawn(later())
         await asyncio.sleep(1)
         times.append(world.now())
 
@@ -146,7 +139,7 @@ def test_invariants_are_cleared_between_the_stop_steps() -> None:
             await asyncio.sleep(0)
             state["bad"] = True
 
-        _spawn(late())
+        spawn(late())
 
     _run_one(scenario, 0)
 
@@ -162,7 +155,7 @@ def test_a_stale_completion_callback_does_not_stop_the_teardown() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -224,7 +217,7 @@ def test_loop_stop_in_a_cancel_handler_does_not_end_the_unwinding() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -263,7 +256,7 @@ def test_invariants_stop_counting_after_the_first_stop_step(
                 await asyncio.sleep(0)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         await asyncio.sleep(0)
         if stop:
             asyncio.get_running_loop().stop()
@@ -286,7 +279,7 @@ def test_loop_stop_in_the_step_where_a_cancelled_scenario_ends() -> None:
             await asyncio.sleep(1)
             state["bad"] = True
 
-        _spawn(flip())
+        spawn(flip())
         try:
             await asyncio.sleep(10)
         except asyncio.CancelledError:
@@ -311,9 +304,9 @@ def test_an_invariant_failing_in_a_stop_step_still_gives_the_next_step() -> None
             if index == 0:
                 state["bad"] = True
             if index < 8:
-                _spawn(chain(index + 1))
+                spawn(chain(index + 1))
 
-        _spawn(chain(0))
+        spawn(chain(0))
 
     worlds: list[World] = []
 
@@ -347,7 +340,7 @@ def test_sleeping_cleanup_works_after_a_check_ended_the_run_in_a_stop_step() -> 
             state["bad"] = True
 
         world.start(Node())
-        _spawn(flip())
+        spawn(flip())
 
     with pytest.raises(InvariantError):
         _run_one(scenario, 0)
@@ -360,9 +353,9 @@ def test_a_check_failing_in_the_second_stop_step_ends_the_run() -> None:
             async def grandchild() -> None:
                 world.always(lambda: False, name="late")
 
-            _spawn(grandchild())
+            spawn(grandchild())
 
-        _spawn(child())
+        spawn(child())
 
     with pytest.raises(InvariantError):
         _run_one(scenario, 0)
@@ -374,9 +367,9 @@ def test_an_interrupt_in_the_second_stop_step_propagates() -> None:
             async def grandchild() -> None:
                 raise SystemExit(3)
 
-            _spawn(grandchild())
+            spawn(grandchild())
 
-        _spawn(child())
+        spawn(child())
 
     with pytest.raises(SystemExit):
         _run_one(scenario, 0)
