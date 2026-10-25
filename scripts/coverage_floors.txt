@@ -14,6 +14,6 @@ src/seedloop/_run.py 100
 src/seedloop/_trace.py 91
 src/seedloop/_world.py 98
 src/seedloop/demos/__init__.py 100
-src/seedloop/demos/raft.py 86
+src/seedloop/demos/raft.py 97
 src/seedloop/errors.py 100
 src/seedloop/hypothesis.py 100

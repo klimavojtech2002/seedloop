@@ -54,6 +54,7 @@ jobs:
           name: coverage-${{ matrix.os }}-${{ matrix.python-version }}
           path: .coverage.*
           include-hidden-files: true  # the files start with a dot
+          if-no-files-found: error  # a cell that measured nothing must not go unnoticed
           retention-days: 7
 
   coverage:

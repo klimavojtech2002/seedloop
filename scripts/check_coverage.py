@@ -95,7 +95,9 @@ def main(argv: list[str]) -> int:
     if args.raise_floors:
         new = raised(report, floors)
         body = [f"{name} {value}" for name, value in new.items()]
-        args.floors.write_text("\n".join([*header, *body]) + "\n", encoding="utf-8")
+        # LF on every platform: the file is committed, so a rewrite must not change its line endings
+        text = "\n".join([*header, *body]) + "\n"
+        args.floors.write_text(text, encoding="utf-8", newline="\n")
         print(f"floors written for {len(new)} files")
         return 0
 

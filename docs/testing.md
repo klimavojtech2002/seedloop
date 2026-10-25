@@ -115,7 +115,8 @@ drops below its floor, when a new module has no floor, or when a floor names a f
 only go up (`--raise` rewrites them from a report); lowering one is an edit that has to be explained in
 review. Coverage is a tripwire, not a quality measure: the mutation gate is. One line cannot be
 measured at all, the `os.execve` call in `ensure_hash_seed`, because it replaces the process before
-coverage can save its data.
+coverage can save its data; on Linux and macOS the lines before it are lost with the process too, so
+the Windows cells, which spawn a child instead, are what cover them in the combined report.
 
 ## What each check guarantees
 

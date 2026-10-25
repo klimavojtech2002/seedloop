@@ -17,6 +17,8 @@ dist/
 
 # Tooling caches
 .coverage
+.coverage.*
+coverage.json
 htmlcov/
 .pytest_cache/
 .ruff_cache/

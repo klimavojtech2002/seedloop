@@ -128,3 +128,40 @@ def test_the_committed_floors_name_exactly_the_files_of_the_package() -> None:
     }
     package = {p.relative_to(ROOT).as_posix() for p in (ROOT / "src" / "seedloop").rglob("*.py")}
     assert names == package
+
+
+def test_a_raise_rounds_down_and_writes_unix_line_endings(tmp_path: Path) -> None:
+    floors = _floors(tmp_path, "src/a.py 90\n")
+    result = _run(_report(tmp_path, {"src/a.py": 99.7}), floors, "--raise")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        floors.read_bytes() == b"src/a.py 99\n"
+    )  # 99.7 is 99 rounded down, and no carriage return
+
+
+def test_a_comment_after_the_first_entry_is_not_moved_into_the_header(tmp_path: Path) -> None:
+    floors = _floors(tmp_path, "# top\nsrc/a.py 90\n# in the middle\nsrc/b.py 80\n")
+    result = _run(_report(tmp_path, {"src/a.py": 90.0, "src/b.py": 80.0}), floors, "--raise")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert floors.read_text(encoding="utf-8") == "# top\nsrc/a.py 90\nsrc/b.py 80\n"
+
+
+@pytest.mark.parametrize(("measured", "asks_to_raise"), [(97.9, False), (98.0, True), (98.6, True)])
+def test_the_raise_note_starts_two_points_above_the_floor(
+    tmp_path: Path, measured: float, asks_to_raise: bool
+) -> None:
+    result = _run(_report(tmp_path, {"src/a.py": measured}), _floors(tmp_path, "src/a.py 96\n"))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert ("raise it to" in result.stdout) is asks_to_raise
+    if asks_to_raise:
+        assert f"raise it to {int(measured)}" in result.stdout  # the whole part, never rounded up
+
+
+def test_the_workflow_runs_the_check_on_the_committed_floors() -> None:
+    workflow = ROOT / ".github" / "workflows" / "ci.yml"
+    if not workflow.exists():
+        pytest.skip("workflow files are not part of the source distribution")
+    assert (
+        "scripts/check_coverage.py coverage.json scripts/coverage_floors.txt"
+        in workflow.read_text(encoding="utf-8")
+    )
