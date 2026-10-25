@@ -165,3 +165,13 @@ def test_the_workflow_runs_the_check_on_the_committed_floors() -> None:
         "scripts/check_coverage.py coverage.json scripts/coverage_floors.txt"
         in workflow.read_text(encoding="utf-8")
     )
+
+
+@pytest.mark.parametrize("setting", ["include-hidden-files: true", "if-no-files-found: error"])
+def test_the_workflow_keeps_the_coverage_data_of_every_cell(setting: str) -> None:
+    # The data files start with a dot, which the upload skips unless told otherwise, and a cell that
+    # uploads nothing must fail instead of being left out of the combined report.
+    workflow = ROOT / ".github" / "workflows" / "ci.yml"
+    if not workflow.exists():
+        pytest.skip("workflow files are not part of the source distribution")
+    assert setting in workflow.read_text(encoding="utf-8")
