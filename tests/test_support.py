@@ -76,6 +76,7 @@ def test_run_script_passes_arguments(tmp_path: Path) -> None:
 _MAY_NAME_THE_SOURCE_TREE = {
     "_support.py",
     "test_differential.py",
+    "test_check_coverage.py",
     "test_docs.py",
     "test_packaging.py",
     "test_mutation_sweep.py",

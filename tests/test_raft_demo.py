@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import sys
 from collections.abc import Callable
 
 import seedloop
+from _support import run_command
 from seedloop._entropy import csprng_shim, substream
 from seedloop._world import World
 from seedloop.demos.raft import (
@@ -119,3 +121,13 @@ def test_election_advances_the_term_each_round() -> None:
         assert terms == [0, 1, 2]  # strictly advancing from 0
 
     seedloop.replay(scenario, seed=1)
+
+
+def test_the_demo_runs_as_a_module_and_tells_the_story() -> None:
+    # The README's headline command: the buggy election has a split-brain at some seed, the replay
+    # reproduces it, and the corrected election passes the same sweep. Exit code 0 is part of it.
+    result = run_command([sys.executable, "-m", "seedloop.demos.raft"], timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "buggy election: split-brain found at seed=" in result.stdout
+    assert "replay reproduces it:" in result.stdout
+    assert "no violation over the same 200 seeds" in result.stdout

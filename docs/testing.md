@@ -108,6 +108,16 @@ regression would fail a test," not just "the lines ran." A survivor is either a 
 with a new test, or a genuinely equivalent mutant, recorded with its reason in
 `scripts/mutation_baseline.txt`.
 
+Coverage is measured on every cell of the matrix (branch coverage, the child processes the tests start
+included) and combined in one job, because some branches run on one operating system family only. Each
+source file has a floor in `scripts/coverage_floors.txt`; `scripts/check_coverage.py` fails when a file
+drops below its floor, when a new module has no floor, or when a floor names a file that is gone. Floors
+only go up (`--raise` rewrites them from a report); lowering one is an edit that has to be explained in
+review. Coverage is a tripwire, not a quality measure: the mutation gate is. One line cannot be
+measured at all, the `os.execve` call in `ensure_hash_seed`, because it replaces the process before
+coverage can save its data; on Linux and macOS the lines before it are lost with the process too, so
+the Windows cells, which spawn a child instead, are what cover them in the combined report.
+
 ## What each check guarantees
 
 | Check | What it guarantees |
@@ -119,6 +129,7 @@ with a new test, or a genuinely equivalent mutant, recorded with its reason in
 | Corpus pin and replay-stability pin | a change that moves a timeline fails CI instead of landing silently |
 | Differential test | behaviour matches the previous release, except for differences declared with a reason |
 | Boundary tests | out-of-boundary use is rejected, never run silently |
+| Coverage floors | no module loses coverage, and no new module goes untested, unnoticed |
 | Mutation gate | a real code change would be caught by a test, not just that the lines ran |
 
 Coverage is judged by whether the entropy paths and boundary rejections are exercised, not by a headline

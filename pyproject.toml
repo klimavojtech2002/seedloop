@@ -41,6 +41,7 @@ dev = [
     "pytest-timeout>=2",
     "packaging>=23",
     "pytest-randomly>=5",
+    "coverage>=7.10",
     "build>=1",
     "seedloop[hypothesis]",
 ]
@@ -69,6 +70,23 @@ files = ["src", "tests"]
 # gates job does not require it; the mutation job type-checks the harness explicitly where libcst is
 # installed.
 exclude = ['(^|/)(\.venv|build|dist|\.eggs|scripts)/']
+
+[tool.coverage.run]
+branch = true
+source = ["seedloop"]
+# `parallel` writes one data file per process, so the child processes the tests start do not
+# overwrite each other; `patch` makes coverage follow them. Relative file names let data from
+# Windows, Linux and macOS be combined into one report.
+parallel = true
+relative_files = true
+patch = ["subprocess"]
+
+[tool.coverage.paths]
+source = ["src/seedloop", "*/src/seedloop", "*/site-packages/seedloop"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
