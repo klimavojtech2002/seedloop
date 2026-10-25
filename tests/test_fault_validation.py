@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 
 import seedloop
-from _sim import event_kinds
+from _sim import event_kinds, window
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
@@ -117,26 +117,38 @@ def test_crash_takes_precedence_over_a_concurrent_partition_cut() -> None:
 
 
 def test_partition_heal_does_not_resurrect_an_overlapping_crashed_node() -> None:
-    # Plan §2's named composition case: fault A (partition, seed=0 window [0.732, 1.578)) and
-    # fault B (crash, node 2 at t=0.1) overlap -- A's heal must not restore reachability to B's
-    # crashed node. A message sent well after the heal must still show drop-crashed.
-    async def scenario(world: World) -> None:
-        a = world.net.bind(1)
-        world.net.bind(2)
-        world.net.bind(3)
+    # Plan §2's named composition case: fault A (a partition) and fault B (crash, node 2 at t=0.1)
+    # overlap -- A's heal must not restore reachability to B's crashed node. A message sent well
+    # after the heal must still show drop-crashed. The heal time is the seed's choice, so a first
+    # run without the message reads it and the message is sent shortly after it.
+    seconds = 2.0
 
-        async def sender() -> None:
-            await asyncio.sleep(1.6)  # after the partition has healed (~1.578)
-            await a.send(2, "post-heal")
+    def run(send_at: float | None) -> list[object]:
+        async def scenario(world: World) -> None:
+            a = world.net.bind(1)
+            world.net.bind(2)
+            world.net.bind(3)
 
-        task = asyncio.ensure_future(sender())
-        await world.run_for(
-            seconds=2, faults=[world.partition({1}, {2, 3}), world.crash(2, at=0.1)]
-        )
-        await task
+            async def sender() -> None:
+                assert send_at is not None
+                await asyncio.sleep(send_at - world.now())
+                await a.send(2, "post-heal")
 
-    kinds = event_kinds(_run_one(scenario, 0))
+            task = asyncio.ensure_future(sender()) if send_at is not None else None
+            await world.run_for(
+                seconds=seconds, faults=[world.partition({1}, {2, 3}), world.crash(2, at=0.1)]
+            )
+            if task is not None:
+                await task
+
+        return list(_run_one(scenario, 0))
+
+    _, healed = window(run(None), "fault-partition-begin", "fault-partition-heal")
+    assert healed + 0.1 < seconds, healed
+    timeline = run(healed + 0.1)
+    kinds = event_kinds(timeline)
     assert "fault-partition-heal" in kinds
+    assert window(timeline, "fault-partition-begin", "fault-partition-heal")[1] == healed
     assert kinds[-1] == "drop-crashed"  # the post-heal send, still cut by the unrelated crash
 
 

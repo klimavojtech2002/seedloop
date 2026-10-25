@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import cast
 
 import pytest
 
 import seedloop
-from _sim import event_kinds, spam
+from _sim import event_kinds, spam, window
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
@@ -58,24 +58,33 @@ def test_partition_leaves_delivery_unaffected_outside_the_window() -> None:
     # message sent before the window starts or after it heals must deliver normally, not just one
     # sent during it. Also the regression guard for the window's end >= start guarantee -- a
     # mutant that lets end drift below start (so the partition never heals) still passes every
-    # other test in this file.
-    async def scenario(world: World) -> None:
-        a = world.net.bind(1)
-        world.net.bind(2)
+    # other test in this file. The window is the seed's choice, so a first run without any
+    # traffic reads it and the sends are placed relative to it.
+    seconds = 3.0
 
-        async def sender() -> None:
-            await a.send(2, "before")
-            await asyncio.sleep(1.2)  # the window (seed=0, pinned groups) is [1.098, 2.366)
-            await a.send(2, "during")
-            await asyncio.sleep(1.3)
-            await a.send(2, "after")
-            await asyncio.sleep(0.5)
+    def run(send_at: Sequence[float]) -> list[object]:
+        async def scenario(world: World) -> None:
+            a = world.net.bind(1)
+            world.net.bind(2)
 
-        task = asyncio.ensure_future(sender())
-        await world.run_for(seconds=3, faults=[world.partition({1}, {2})])
-        await task
+            async def sender() -> None:
+                for moment in send_at:
+                    await asyncio.sleep(moment - world.now())
+                    await a.send(2, f"at {moment:.3f}")
 
-    tl = [cast("tuple[object, ...]", e) for e in _run_one(scenario, 0)]
+            task = asyncio.ensure_future(sender())
+            await world.run_for(seconds=seconds, faults=[world.partition({1}, {2})])
+            await task
+
+        return list(_run_one(scenario, 0))
+
+    start, end = window(run([]), "fault-partition-begin", "fault-partition-heal")
+    # room for a message to arrive (up to 20 ms) on each side of the cut
+    assert start > 0.1 and start + 0.1 < end and end + 0.1 < seconds, (start, end)
+    sends = [start / 2, (start + end) / 2, (end + seconds) / 2]
+    timeline = run(sends)
+    assert window(timeline, "fault-partition-begin", "fault-partition-heal") == (start, end)
+    tl = [cast("tuple[object, ...]", e) for e in timeline]
     kinds_by_mid = {e[2]: e[1] for e in tl if e[1] in ("deliver", "drop-partitioned")}
     assert kinds_by_mid == {0: "deliver", 1: "drop-partitioned", 2: "deliver"}
 

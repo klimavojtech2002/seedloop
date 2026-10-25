@@ -38,3 +38,11 @@ async def spam(
     for i in range(count):
         await eps[src].send(dst, i)
         await asyncio.sleep(interval)
+
+
+def window(timeline: Sequence[object], begins: str, ends: str) -> tuple[float, float]:
+    """When a fault actually began and ended, read from the events the run recorded."""
+    events = [cast("tuple[object, ...]", e) for e in timeline]
+    (start,) = [cast(float, e[0]) for e in events if e[1] == begins]
+    (stop,) = [cast(float, e[0]) for e in events if e[1] == ends]
+    return start, stop

@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 
 import seedloop
-from _sim import spam
+from _sim import spam, window
 from seedloop._run import _run_one
 from seedloop._world import World
 from seedloop.errors import SeedloopError
@@ -74,24 +74,32 @@ def test_slow_link_pinned_pair_scopes_to_that_pair_only() -> None:
 def test_slow_link_leaves_latency_unaffected_outside_the_window() -> None:
     # The acceptance bar is stronger than "off-pair traffic is untouched" (the test above): on the
     # very same pair, a message sent before the window starts or after it ends must see ordinary
-    # latency, not just one sent during it.
-    async def scenario(world: World) -> None:
-        a = world.net.bind(1)
-        world.net.bind(2)
+    # latency, not just one sent during it. The window is the seed's choice, so a first run without
+    # any traffic reads it and the sends are placed relative to it.
+    seconds = 3.0
 
-        async def sender() -> None:
-            await a.send(2, "before")
-            await asyncio.sleep(0.19)  # the window (seed=5) is [0.163, 0.212)
-            await a.send(2, "during")
-            await asyncio.sleep(2.5)
-            await a.send(2, "after")
-            await asyncio.sleep(0.5)
+    def run(send_at: Sequence[float]) -> list[object]:
+        async def scenario(world: World) -> None:
+            a = world.net.bind(1)
+            world.net.bind(2)
 
-        task = asyncio.ensure_future(sender())
-        await world.run_for(seconds=3, faults=[world.slow_link(1, 2)])
-        await task
+            async def sender() -> None:
+                for moment in send_at:
+                    await asyncio.sleep(moment - world.now())
+                    await a.send(2, f"at {moment:.3f}")
 
-    tl = [cast("tuple[object, ...]", e) for e in _run_one(scenario, 5)]
+            task = asyncio.ensure_future(sender())
+            await world.run_for(seconds=seconds, faults=[world.slow_link(1, 2)])
+            await task
+
+        return list(_run_one(scenario, 5))
+
+    start, end = window(run([]), "fault-slow-link-begin", "fault-slow-link-end")
+    assert 0.0 < start < end < seconds, (start, end)
+    sends = [start / 2, (start + end) / 2, (end + seconds) / 2]
+    timeline = run(sends)
+    assert window(timeline, "fault-slow-link-begin", "fault-slow-link-end") == (start, end)
+    tl = [cast("tuple[object, ...]", e) for e in timeline]
     sent_at = {cast(int, e[2]): cast(float, e[0]) for e in tl if e[1] == "send"}
     latency: dict[int, float] = {}
     for e in tl:
