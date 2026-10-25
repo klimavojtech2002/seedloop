@@ -53,13 +53,10 @@ def test_partition_unresolved_cuts_and_heals_reproducibly() -> None:
 
 
 def test_partition_leaves_delivery_unaffected_outside_the_window() -> None:
-    # The acceptance bar is stronger than "some deliver, some drop somewhere" (the aggregate test
-    # above, which the *other, uncut* pair alone can satisfy): on the very same cut pair, a
-    # message sent before the window starts or after it heals must deliver normally, not just one
-    # sent during it. Also the regression guard for the window's end >= start guarantee -- a
-    # mutant that lets end drift below start (so the partition never heals) still passes every
-    # other test in this file. The window is the seed's choice, so a first run without any
-    # traffic reads it and the sends are placed relative to it.
+    # On the cut pair itself, a message sent before the window starts or after it heals must
+    # deliver, and one sent during it must drop. This also guards the window's end >= start rule:
+    # if end drifts below start, the partition never heals. The window is the seed's choice, so
+    # a first run without traffic reads it and the sends are placed relative to it.
     seconds = 3.0
 
     def run(send_at: Sequence[float]) -> list[object]:

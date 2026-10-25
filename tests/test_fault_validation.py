@@ -117,10 +117,10 @@ def test_crash_takes_precedence_over_a_concurrent_partition_cut() -> None:
 
 
 def test_partition_heal_does_not_resurrect_an_overlapping_crashed_node() -> None:
-    # Plan §2's named composition case: fault A (a partition) and fault B (crash, node 2 at t=0.1)
-    # overlap -- A's heal must not restore reachability to B's crashed node. A message sent well
-    # after the heal must still show drop-crashed. The heal time is the seed's choice, so a first
-    # run without the message reads it and the message is sent shortly after it.
+    # A partition and a crash (node 2 at t=0.1) overlap: the partition heal must not restore
+    # reachability to the crashed node, so a message sent after the heal still drops as crashed.
+    # The heal time is the seed's choice, so a first run without the message reads it and the
+    # message is sent shortly after it.
     seconds = 2.0
 
     def run(send_at: float | None) -> list[object]:
