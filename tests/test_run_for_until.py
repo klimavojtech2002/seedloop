@@ -145,14 +145,11 @@ def test_run_until_no_deadline_no_progress_raises_deadlock() -> None:
 
 
 def test_run_until_deadlock_while_pending_resets_its_own_state() -> None:
-    # DeadlockError fires from _run_once's own quiescent guard, before the after-step hooks even
-    # run — a completely different path from run_until's own call stack. World._drive's teardown
-    # then clears the whole hook list before cancelling the still-suspended scenario task, whose
-    # `run_until` resumes with CancelledError and runs its own `finally`. Without the defensive
-    # membership check there, `hooks.remove(check)` raised `ValueError` (not in list) right there,
-    # aborting that `finally` before it could reset `_run_until_active` — a state leak invisible to
-    # `check()`'s reported error (DeadlockError surfaces either way) but real. White-box: drive the
-    # World directly to inspect its post-run state.
+    # A deadlock is raised before the after-step hooks run, and teardown then clears the hook
+    # list before cancelling the suspended scenario. run_until's `finally` must tolerate its hook
+    # already being gone; otherwise `hooks.remove` raises ValueError and `_run_until_active` is
+    # never reset. check() reports the DeadlockError either way, so this drives the World
+    # directly to inspect its state after the run.
     world = World(0)
 
     async def scenario() -> None:
@@ -256,17 +253,12 @@ def test_invariant_still_fires_while_run_until_is_pending() -> None:
 
 
 def test_invariant_still_surfaces_with_a_started_node_still_pending() -> None:
-    # test_invariant_still_fires_while_run_until_is_pending above uses a helper task that finishes
-    # in the same step as the collision, so nothing is left pending at teardown -- the one
-    # condition that let a real defect through several reviews before 0.4.0: a run_until
-    # predicate that itself raises resolves the scenario task through a callback scheduled one
-    # step after the after-step hooks run, one step later than an always()-hard-hook failure in
-    # the same collision; asyncio.run_until_complete's own internal completion callback for that
-    # resolution can then fire late, during World._drive's teardown
-    # run_until_complete, and stop it before its own target (the cancellation gather) is done --
-    # surfacing a bare RuntimeError instead of the real InvariantError. A world.start()-ed node
-    # that never returns on its own is what leaves teardown with real work still pending when this
-    # happens; the vast majority of real scenarios have at least one.
+    # The test above leaves nothing pending at teardown, which hid a defect: when the run_until
+    # predicate itself raises, the scenario task resolves one step late, and the completion
+    # callback of run_until_complete can then fire during teardown and stop it before the
+    # cancellation gather is done. The caller saw a bare RuntimeError instead of the
+    # InvariantError. A started node that never returns keeps teardown busy, as in most real
+    # scenarios.
     async def scenario(world: World) -> None:
         class ForeverNode:
             async def run(self) -> None:

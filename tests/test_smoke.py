@@ -1,3 +1,5 @@
+import pytest
+
 import seedloop
 
 
@@ -5,11 +7,11 @@ def test_version_is_string() -> None:
     assert isinstance(seedloop.__version__, str)
 
 
-def test_public_api_is_exported() -> None:
+@pytest.mark.parametrize("name", ["World", "check", "replay", "CheckResult", "SeedloopError"])
+def test_public_api_is_exported(name: str) -> None:
     # The core entry points and types are importable from the top-level package.
-    for name in ("World", "check", "replay", "CheckResult", "SeedloopError"):
-        assert name in seedloop.__all__
-        assert hasattr(seedloop, name)
+    assert name in seedloop.__all__
+    assert hasattr(seedloop, name)
 
 
 def test_check_result_is_an_immutable_value() -> None:

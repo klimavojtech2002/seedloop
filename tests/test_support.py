@@ -85,6 +85,20 @@ _MAY_NAME_THE_SOURCE_TREE = {
 }
 
 
+# A test file longer than this has stopped being one area of behaviour that a reviewer can hold in
+# their head; split it by what it checks. Most files are well under 400 lines.
+_MAX_TEST_FILE_LINES = 700
+
+
+def test_no_test_file_is_too_long_to_review() -> None:
+    too_long = {
+        path.name: lines
+        for path in sorted((ROOT / "tests").glob("*.py"))
+        if (lines := len(path.read_text(encoding="utf-8").splitlines())) > _MAX_TEST_FILE_LINES
+    }
+    assert not too_long, f"split these test files (limit {_MAX_TEST_FILE_LINES} lines): {too_long}"
+
+
 def test_no_test_hardcodes_the_source_tree() -> None:
     # The mutation harness runs the suite against a modified copy of src/ (via PYTHONPATH).
     # A test that puts the repository's own src/ on sys.path (or a child that does) would exercise
