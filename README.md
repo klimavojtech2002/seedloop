@@ -185,3 +185,5 @@ Full API in [docs/api.md](docs/api.md), design in [docs/ARCHITECTURE.md](docs/AR
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+[![klimavojtech2002/seedloop, explained in a one-minute video](https://gitdiagram.com/api/video/file?username=klimavojtech2002&repo=seedloop&format=poster)](https://gitdiagram.com/klimavojtech2002/seedloop/video)
