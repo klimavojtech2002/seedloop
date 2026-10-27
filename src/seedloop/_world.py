@@ -15,14 +15,29 @@ import asyncio
 import contextlib
 import math
 from collections.abc import Awaitable, Callable, Collection, Iterator, Sequence
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from seedloop._entropy import substream
 from seedloop._faults import CrashFault, Fault, PartitionFault, SlowLinkFault
-from seedloop._loop import DeterministicLoop
+from seedloop._loop import DeterministicLoop, describe_tasks
 from seedloop._net import Address, Transport
 from seedloop._trace import Timeline
-from seedloop.errors import InvariantError, SeedloopError, _UsageError
+from seedloop.errors import (
+    DeadlockError,
+    InvariantError,
+    LivelockError,
+    SeedloopError,
+    TeardownError,
+    _UsageError,
+)
+
+DEFAULT_MAX_STEPS = 10_000_000
+
+# Teardown gets its own allowance, separate from the run's: a round may take this many steps plus a
+# share per task it has to cancel, and cancelling may start more tasks for at most this many rounds.
+_TEARDOWN_STEPS = 100_000
+_TEARDOWN_STEPS_PER_TASK = 100
+_TEARDOWN_ROUNDS = 100
 
 _RUNNING_LOOP_MESSAGE = (
     "check/replay cannot run inside a running event loop; call it from synchronous code"
@@ -39,8 +54,10 @@ class Node(Protocol):
 class World:
     """One deterministic run, all derived from ``seed``."""
 
-    def __init__(self, seed: int) -> None:
+    def __init__(self, seed: int, *, max_steps: int | None = DEFAULT_MAX_STEPS) -> None:
         self.seed = seed
+        self._max_steps = max_steps
+        self._tearing_down = False
         self.rng = substream(seed, "user")  # the user's entropy; never the global random
         self._loop = DeterministicLoop()
         self._timeline = Timeline()
@@ -67,12 +84,15 @@ class World:
     def always(self, predicate: Callable[[], bool], *, name: str) -> None:
         """Register a safety property that must hold throughout the run.
 
-        ``predicate`` is evaluated after every step (not during teardown); the first step where it
-        is false raises ``InvariantError(name)``, which ``check`` reports. It must be pure and
+        ``predicate`` is evaluated after every step (not during teardown, and a property registered
+        while the remaining tasks are being cancelled is ignored); the first step where it is
+        false raises ``InvariantError(name)``, which ``check`` reports. It must be pure and
         read-only — a predicate that mutates state or draws entropy would break determinism. A
         started node's body runs a step after ``start``, so a predicate over node state sees its
         initial value on the first check.
         """
+        if self._tearing_down:
+            return  # invariants describe the run, not the cleanup after it
         self._invariants.append((name, predicate))
         if not self._invariants_hook_installed:
             # Installed once no matter how many predicates are registered — _check_invariants loops
@@ -247,6 +267,12 @@ class World:
             if close is not None:
                 close()  # never started: do not leave a "coroutine was never awaited" warning
             raise _UsageError(_RUNNING_LOOP_MESSAGE)
+        if not asyncio.iscoroutine(main):
+            raise _UsageError(
+                "a scenario must be an async function: calling it returned "
+                f"{type(main).__name__}, not a coroutine"
+            )
+        loop.limit_steps(self._max_steps, self._livelock_error)
         main_task = loop.create_task(main)
         failure: BaseException | None = None
         try:
@@ -260,6 +286,7 @@ class World:
                 failure = exc  # a hook (invariant) or machinery error ended the run mid-scenario
                 raise
             finally:
+                self._limit_teardown_steps()  # the run's own allowance ends with the run
                 if failure is not None:  # otherwise run_until_done cleared them between its steps
                     loop._sl_after_step_hooks.clear()
                 if not main_task.done():
@@ -293,13 +320,9 @@ class World:
             try:
                 if failure is not None:  # a check added while settling must not fire again here
                     loop._sl_after_step_hooks.clear()
+                self._tearing_down = True
                 with _secondary(failure):
-                    pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-                    pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
-                    for task in pending:
-                        task.cancel()
-                    if pending:
-                        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    self._cancel_everything()
             except BaseException as interrupt:
                 if failure is not None and interrupt is not failure:
                     _note(interrupt, _describe(failure))  # keep the failure the interrupt replaced
@@ -311,6 +334,69 @@ class World:
                     if task.done() and not task.cancelled():
                         task.exception()
                 self._close()
+
+    def _cancel_everything(self) -> None:
+        """Cancel what is still running, round by round, in creation order.
+
+        Cancelling can start new tasks (a cancel handler that spawns), so rounds repeat until
+        nothing is pending. Each round and the number of rounds are bounded: a task that swallows
+        cancellation, or handlers that keep spawning, end as a ``TeardownError`` rather than a hang.
+        """
+        loop = self._loop
+        for _ in range(_TEARDOWN_ROUNDS):
+            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            if not pending:
+                return
+            pending.sort(key=lambda t: getattr(t, "_sl_seq", -1))
+            for task in pending:
+                task.cancel()
+            self._limit_teardown_steps(len(pending))
+            finished = asyncio.gather(*pending, return_exceptions=True)
+            try:
+                self._run_until(finished)
+            except (TeardownError, DeadlockError):
+                self._stop_reporting_unfinished()
+                raise
+        error = TeardownError(
+            f"teardown did not finish after {_TEARDOWN_ROUNDS} rounds of cancelling: tasks keep "
+            f"starting new tasks. Tasks still running: {describe_tasks(asyncio.all_tasks(loop))}"
+        )
+        self._stop_reporting_unfinished()
+        raise error
+
+    def _run_until(self, future: asyncio.Future[Any]) -> None:
+        # A user loop.stop() ends one pass of the loop, not the teardown: keep going until done.
+        while not future.done():
+            try:
+                self._loop.run_until_complete(future)
+            except RuntimeError as exc:
+                if future.done() or "stopped before Future completed" not in str(exc):
+                    raise
+
+    def _stop_reporting_unfinished(self) -> None:
+        # Tasks teardown gave up on are closed with the loop; asyncio would log each one as
+        # "Task was destroyed but it is pending", on top of the error that already names them.
+        # Only called for errors that name them: after an interrupt the log line is all there is.
+        for task in asyncio.all_tasks(self._loop):
+            task._log_destroy_pending = False  # type: ignore[attr-defined]
+
+    def _limit_teardown_steps(self, tasks: int = 0) -> None:
+        self._loop.limit_steps(
+            _TEARDOWN_STEPS + _TEARDOWN_STEPS_PER_TASK * tasks, self._teardown_error
+        )
+
+    def _livelock_error(self) -> Exception:
+        return LivelockError(
+            f"the run did not finish within {self._max_steps} steps (t={self._loop.time()}); a "
+            "task that never waits keeps the clock from advancing. Running tasks: "
+            + describe_tasks(asyncio.all_tasks(self._loop))
+        )
+
+    def _teardown_error(self) -> Exception:
+        return TeardownError(
+            "teardown did not finish: a task ignores cancellation, or cleanup never ends. "
+            "Tasks still running: " + describe_tasks(asyncio.all_tasks(self._loop))
+        )
 
 
 def _describe(error: BaseException) -> str:
@@ -324,7 +410,8 @@ def _note(failure: BaseException, text: str) -> None:
     # An exception that cannot take a note (frozen, unusable __notes__, custom add_note) keeps its
     # place as the real failure; the note is dropped.
     with contextlib.suppress(Exception):
-        failure.add_note(text)
+        if text not in getattr(failure, "__notes__", ()):  # the same problem is noted once
+            failure.add_note(text)
 
 
 @contextlib.contextmanager

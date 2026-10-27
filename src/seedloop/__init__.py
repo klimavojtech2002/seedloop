@@ -17,7 +17,9 @@ from seedloop.errors import (
     DeadlockError,
     EntropyLeakError,
     InvariantError,
+    LivelockError,
     SeedloopError,
+    TeardownError,
 )
 
 __all__ = [
@@ -30,12 +32,14 @@ __all__ = [
     "EntropyLeakError",
     "Fault",
     "InvariantError",
+    "LivelockError",
     "Message",
     "Node",
     "PartitionFault",
     "Scenario",
     "SeedloopError",
     "SlowLinkFault",
+    "TeardownError",
     "Transport",
     "World",
     "audit_mode",

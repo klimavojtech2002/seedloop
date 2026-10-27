@@ -9,6 +9,7 @@ code under test may swallow, and on Windows it terminates the whole session.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -91,6 +92,45 @@ def run_script(
 ) -> subprocess.CompletedProcess[str]:
     """Run a Python script file in a fresh interpreter under the same cap."""
     return run_command([sys.executable, str(script), *args], timeout=timeout, env=env, cwd=cwd)
+
+
+_CHECK_SCRIPT = """\
+import asyncio, contextlib, json, math, seedloop
+{scenario}
+r = seedloop.check(scenario, seeds={seeds}, on_failure="return", {options})
+e = r.error
+print(json.dumps({{
+    "type": type(e).__name__ if e else None,
+    "message": str(e) if e else "",
+    "notes": list(getattr(e, "__notes__", [])) if e else [],
+    "seed": r.failing_seed,
+    "extra": {report},
+}}))
+"""
+
+
+def isolated_check(
+    scenario_source: str,
+    *,
+    seeds: str = "[0]",
+    options: str = "",
+    report: str = "None",
+    timeout: float = DEFAULT_CAP,
+) -> dict[str, Any]:
+    """Run ``seedloop.check`` on a scenario in a fresh interpreter and report what it returned.
+
+    ``scenario_source`` defines an async function ``scenario(world)``. The result holds the error
+    type name, its message and notes, and the failing seed; a hang past ``timeout`` fails this one
+    test instead of the whole job. ``report`` is an expression evaluated after the check and
+    returned as ``extra`` (it must be JSON-serialisable).
+    """
+    code = _CHECK_SCRIPT.format(
+        scenario=scenario_source, seeds=seeds, options=options, report=report
+    )
+    done = run_isolated(code, timeout=timeout)
+    assert done.returncode == 0, done.stderr
+    parsed: dict[str, Any] = json.loads(done.stdout.strip().splitlines()[-1])
+    return parsed
 
 
 def run_command(

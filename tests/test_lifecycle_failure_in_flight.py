@@ -403,12 +403,15 @@ def test_check_returns_a_failure_that_takes_no_notes() -> None:
 
 
 def test_a_check_added_while_settling_is_noted_once() -> None:
+    cleaned: list[str] = []
+
     class Slow:
         async def run(self) -> None:
             try:
                 await asyncio.sleep(100)
             except asyncio.CancelledError:
                 await asyncio.sleep(1)
+                cleaned.append("slow")
                 raise
 
     async def scenario(world: World) -> None:
@@ -425,3 +428,6 @@ def test_a_check_added_while_settling_is_noted_once() -> None:
         _run_one(scenario, 0)
     notes = [n for n in getattr(caught.value, "__notes__", []) if "late" in n]
     assert len(notes) == 1, notes
+    # The check must not fire again once teardown starts: that would cut the cleanup short, and the
+    # repeated note would be dropped as a duplicate.
+    assert cleaned == ["slow"]

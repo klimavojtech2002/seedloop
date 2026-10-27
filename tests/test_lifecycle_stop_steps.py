@@ -194,9 +194,11 @@ def test_loop_stop_two_steps_after_the_scenario_finished() -> None:
         assert task is not None
         task.add_done_callback(lambda _t: loop.call_soon(lambda: loop.call_soon(loop.stop)))
 
+    # The stop lands while teardown is cancelling what is left. Like a stop during the unwinding of
+    # the scenario task, it ends one pass of the loop, not the teardown, so the run still passes.
     outcome, events = _timeline(scenario)
     assert events == ["child", "grandchild"]
-    assert outcome == "RuntimeError: Event loop stopped before Future completed."
+    assert outcome == "ok"
 
 
 def test_loop_stop_before_the_scenario_finished_is_reported() -> None:

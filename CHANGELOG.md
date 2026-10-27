@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `max_steps` on `check` and `replay` (default 10 000 000, `None` for no limit). A run that takes
+  more steps raises the new `LivelockError`, naming the virtual time and the running tasks.
+- `TeardownError`: cleanup after the scenario that does not end (a task that swallows
+  cancellation, cancel handlers that keep starting tasks) is reported instead of hanging.
+- `DeadlockError` lists up to 20 blocked tasks.
+
+### Changed
+- Teardown cancels in rounds, so a task started by a cancel handler is cancelled too instead of
+  being left pending.
+- `sleep(math.inf)` with nothing else scheduled is a `DeadlockError`; it used to end the run at
+  `t=inf`.
+- A scenario that is not a coroutine raises `SeedloopError` instead of `TypeError`.
+- The same note is attached to a failure once, not repeatedly.
+- Tasks that teardown gave up on are named by the error and no longer also logged by asyncio as
+  "Task was destroyed but it is pending".
+
+### Fixed
+- A check registered by a task's cleanup while the remaining tasks are being cancelled no longer
+  ends teardown early.
+- A `loop.stop()` called during teardown no longer fails a scenario that passed.
+
 ## [0.4.1] — 2026-10-24
 
 A run now starts, runs and ends in a defined way on every path, and the packaging and the documents match

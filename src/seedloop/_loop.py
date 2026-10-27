@@ -19,10 +19,40 @@ from __future__ import annotations
 import asyncio
 import heapq
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any, NoReturn
 
 from seedloop.errors import BoundaryError, DeadlockError
+
+_LISTED_TASKS = 20
+
+
+def describe_tasks(tasks: Iterable[asyncio.Task[Any]], limit: int = _LISTED_TASKS) -> str:
+    """Name the tasks: index, coroutine, and what each is waiting on, in creation order.
+
+    Nothing here depends on memory addresses, so the text is the same on every run of a seed. A
+    task the loop did not index (created directly, not through the loop) shows ``#?`` and is
+    listed first, sorted by text.
+    """
+    live = [t for t in tasks if not t.done()]
+    indexed = sorted((t for t in live if hasattr(t, "_sl_seq")), key=lambda t: t._sl_seq)
+    # Without an index there is no creation order to use, and the set the tasks come from is in
+    # memory-address order, so their lines are sorted by text instead.
+    unindexed = sorted(_describe(t) for t in live if not hasattr(t, "_sl_seq"))
+    parts = unindexed + [_describe(t) for t in indexed]
+    shown = parts[:limit]
+    if len(parts) > limit:
+        shown.append(f"and {len(parts) - limit} more")
+    return "; ".join(shown) if shown else "none"
+
+
+def _describe(task: asyncio.Task[Any]) -> str:
+    coro = task.get_coro()
+    name = getattr(coro, "__qualname__", type(coro).__name__)
+    index = getattr(task, "_sl_seq", "?")
+    waiting = getattr(task, "_fut_waiter", None)
+    waits = f" awaiting {type(waiting).__name__}" if waiting is not None else ""
+    return f"#{index} {name}{waits}"
 
 
 class DeterministicLoop(asyncio.BaseEventLoop):
@@ -52,6 +82,15 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         self._sl_watch: asyncio.Future[Any] | None = None
         self._sl_stop_in: int | None = None  # steps left once the watched future is done
         self._sl_settle: Callable[[], None] | None = None
+        # A cap on the steps taken from now on; None means no cap. Reaching it raises the error the
+        # caller supplied, so the run and each teardown round can report themselves differently.
+        self._sl_steps_left: int | None = None
+        self._sl_step_error: Callable[[], Exception] | None = None
+
+    def limit_steps(self, steps: int | None, error: Callable[[], Exception] | None = None) -> None:
+        """Allow ``steps`` more steps, then raise ``error()`` instead of taking another one."""
+        self._sl_steps_left = steps
+        self._sl_step_error = error
 
     def run_until_done(
         self, fut: asyncio.Future[Any], settle: Callable[[], None] | None = None
@@ -125,15 +164,22 @@ class DeterministicLoop(asyncio.BaseEventLoop):
         # Deterministic replacement for BaseEventLoop._run_once: no select(), no real I/O. When
         # nothing is ready, advance virtual time to the next timer (autojump); then promote every
         # timer now due and run the ready batch in faithful FIFO order (ADR-0012).
+        if self._sl_steps_left is not None:
+            if self._sl_steps_left == 0:
+                assert self._sl_step_error is not None
+                raise self._sl_step_error()
+            self._sl_steps_left -= 1
         ready: Any = self._ready  # type: ignore[attr-defined]  # BaseEventLoop's ready deque
         if not ready and self._sl_stop_in is None:  # the two stop steps never autojump
             self._purge_cancelled_timers()
-            if self._sl_timers:
+            # A timer at infinity never fires: jumping to it would end the run at t=inf with the
+            # sleeper "woken", which is not what a sleep without an end means.
+            if self._sl_timers and self._sl_timers[0][0] != math.inf:
                 self._sl_time = max(self._sl_time, self._sl_timers[0][0])  # jump forward only
             elif not self._stopping:  # type: ignore[attr-defined]  # BaseEventLoop stop flag
                 raise DeadlockError(
                     "the run is quiescent: every task is blocked and no timer is scheduled to "
-                    "wake one"
+                    "wake one. Blocked tasks: " + describe_tasks(asyncio.all_tasks(self))
                 )
         self._fire_due_timers()
         # Run the batch ready at step start in registration order; callbacks scheduled mid-batch

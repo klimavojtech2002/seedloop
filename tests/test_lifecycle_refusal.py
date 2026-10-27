@@ -100,7 +100,7 @@ def test_the_loop_is_closed_for_a_scenario_that_is_not_a_coroutine() -> None:
     def scenario(world: World) -> None:
         loops.append(world._loop)
 
-    with pytest.raises(TypeError):
+    with pytest.raises(seedloop.SeedloopError, match="not a coroutine"):
         _run_one(scenario, 0)  # type: ignore[arg-type]
     assert loops[0].is_closed()
 
