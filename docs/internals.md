@@ -65,10 +65,11 @@ timer or an I/O event. seedloop has no I/O and no real waiting, so the poll beco
 
 ```
 def _run_once(self):
+    # 0. Count the step; past the allowance, raise the error the caller supplied (ADR-0025).
     # 1. When nothing is ready, jump the clock to the next live timer (autojump).
     if not self._ready:
         self._purge_cancelled_timers()                  # head becomes a live deadline
-        if self._sl_timers:
+        if self._sl_timers and self._sl_timers[0][0] != math.inf:
             self._sl_time = max(self._sl_time, self._sl_timers[0][0])   # forward only; nobody sleeps
         elif not self._stopping:
             raise DeadlockError(...)                     # blocked, no timer to wake anyone
@@ -84,7 +85,11 @@ def _run_once(self):
 The run ends when the top-level coroutine completes. When the ready queue and the timer heap are both
 empty while tasks are still awaiting, nothing can ever wake them — a **deadlock in the simulated
 world** — and seedloop raises rather than hanging, because a real `asyncio` program would hang there and
-a test must surface it.
+a test must surface it. The error lists the blocked tasks. A timer at infinity is not a wake-up.
+
+A run that never blocks cannot deadlock, but it cannot finish either: a task that spins on
+`await sleep(0)` keeps the ready queue busy and the clock still. The loop counts steps, and a run that
+takes more than `max_steps` raises `LivelockError`.
 
 This is the autojump of ADR-0005 / `trio`'s `MockClock`: time only moves when all work is blocked, and
 then it moves straight to the next scheduled event. A 10-second `sleep` is a timer at `now+10`; when the
@@ -97,9 +102,10 @@ until the task is done and then runs exactly two more steps, so a task spawned i
 its first moves. Those two steps never advance the clock, and the invariant checks are cleared between
 them; one registered during the second step stays active, and once a failure is in flight the checks
 are cleared again before teardown. The scenario task is then settled on its own, and every remaining
-task is cancelled in creation order. The first failure of the run is kept: a later error from settling
-or teardown is attached to it as a note, and an interrupt is never replaced. The loop is closed on every
-path (ADR-0023). `check` and `replay` refuse to start inside a running event loop.
+task is cancelled in creation order, in rounds: a task started by a cancel handler is cancelled in the
+next round, and each round and the number of rounds are bounded (ADR-0025). The first failure of the
+run is kept: a later error from settling or teardown is attached to it as a note, and an interrupt is
+never replaced. The loop is closed on every path (ADR-0023). `check` and `replay` refuse to start inside a running event loop.
 
 ## Virtual clock
 

@@ -757,7 +757,7 @@ coroutine, left an unclosed loop behind.
 exceptions, all of which were defects:
 - When a task is still pending at the end of teardown (one spawned while teardown was cancelling),
   0.4.0 replaced the run's real result with an `InvalidStateError`; the real result is now reported.
-  That pending task is not yet waited for.
+  (ADR-0025 now cancels such a task in a later round.)
 - A `KeyboardInterrupt` or `SystemExit` raised by the scenario's cancel handler after a failed
   invariant used to be replaced by the `InvariantError`; it now propagates.
 - A node failure, or an error from the scenario, followed by a deadlock in teardown used to report the
@@ -767,7 +767,8 @@ exceptions, all of which were defects:
   now reported, the later one is a note, and teardown completes.
 - Any first failure (an error from the scenario, a node, or a check) followed by user code stopping
   the loop while the run winds down: the first failure is reported, with the stop as a note, instead
-  of the stop's `RuntimeError`.
+  of the stop's `RuntimeError`. (A stop that lands while the remaining tasks are cancelled is no
+  longer an error at all, ADR-0025.)
 - A scenario or node error followed by a different error while the run winds down (a check that
   fires in the last steps, a failing cancel handler): the first error is reported and the later one
   is a note, where 0.4.0 reported the later one.
@@ -775,8 +776,8 @@ exceptions, all of which were defects:
   there (`KeyboardInterrupt`, `SystemExit`), now ends the run.
 - A scenario that schedules a NaN timer and returns used to pass; it now raises `ValueError`.
 - A cancel handler that waits on something that never happens, after a failed invariant, now ends the
-  run with the original failure and a note, instead of hanging. A handler that swallows the
-  cancellation and loops forever still spins: teardown is not yet bounded.
+  run with the original failure and a note, instead of hanging. (A handler that swallows the
+  cancellation and loops forever is now ended by ADR-0025.)
 
 Outcome types are otherwise unchanged, but an error can now carry notes it did not have before.
 
@@ -825,6 +826,51 @@ read.
   and then joins it blocks until the first run ends, and a module that calls `check` at import time
   can deadlock against another thread that is importing it. Neither is something a deterministic
   run does; they are listed because the lock is blocking.
+
+## ADR-0025 — A run and its teardown are bounded, and say what is stuck
+
+**Status:** Accepted
+
+**Context.** A scenario with a task that never waits, such as `while not done: await sleep(0)`,
+keeps the ready queue busy, so the virtual clock never advances and the run never ends. Teardown had
+no bound either: a task that swallows cancellation kept it running for ever, and a task started by a
+cancel handler was left pending. A deadlock named no task, and `sleep(math.inf)` with nothing else
+scheduled "passed" with the clock at infinity.
+
+**Decision.**
+- **The run has a step limit.** `check` and `replay` take `max_steps` (default 10 000 000, `None` for
+  no limit). The limit counts every loop step of the run, including the two that follow the scenario.
+  Reaching it raises `LivelockError` with the virtual time and the running tasks. The default is far
+  above any measured scenario (a Raft cluster of nine nodes for 300 s takes about 108 000 steps) and is
+  reached by a pure spin in tens of seconds, depending on the machine.
+- **Teardown has its own bound, in rounds.** What is still running is cancelled in creation order and
+  driven until the round's tasks are done; tasks started by cancel handlers are cancelled in the next
+  round. A round may take 100 000 steps plus 100 per task, and there are at most 100 rounds. Beyond
+  that, `TeardownError` names the tasks still running.
+- **A failure already in flight stays the error.** A `TeardownError` that follows a scenario failure is
+  attached to it as a note, as every other late error is (ADR-0023).
+- **Invariants end with the run.** A property registered by a task's cleanup while the remaining tasks
+  are being cancelled is ignored, because invariants describe the run and not what happens after it.
+  The rule starts once the scenario task has settled; what happens to a property registered while it
+  unwinds is unchanged.
+- **A stray `loop.stop()` ends one pass of the loop, not the teardown.** Teardown keeps driving until
+  its tasks are done, as the unwinding of the scenario task already did.
+- **`DeadlockError` lists up to 20 blocked tasks**, by creation index and coroutine name, with the
+  type of what each awaits and no memory addresses, so the text is the same on every run of a seed.
+  A timer at infinity is not a wake-up: with nothing else scheduled, the run is a deadlock.
+- **A scenario that is not a coroutine is a `SeedloopError`**, reported before anything runs.
+
+**Consequences.**
+- Declared change: a program that used to spin, or to leave work pending at the end, now fails with
+  a named error instead of hanging or passing.
+- Declared change: a `loop.stop()` that lands during teardown no longer fails the run. A real
+  `asyncio.run` would raise there; a simulated run has nothing for a stop to mean.
+- Steps are counted per run, so the same seed fails at the same step on every machine.
+- A note whose text is already on a failure is not added again, and a task that teardown gave up on
+  is not also logged by asyncio as "destroyed but it is pending": the error names it already. An
+  interrupt does not name the tasks, so asyncio's own log line stays for that case.
+- The step limit is a guard against runs that do not end, not a time limit: a run that is slow but
+  keeps finishing steps is not stopped before `max_steps`.
 
 ---
 

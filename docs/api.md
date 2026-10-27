@@ -57,10 +57,17 @@ def check(
     seeds: int | Iterable[int] = 1000,
     on_failure: Literal["raise", "return"] = "raise",
     audit: bool = False,  # run each seed under the non-determinism auditor (ADR-0008)
+    max_steps: int | None = 10_000_000,  # fail a run that takes more loop steps (ADR-0025)
 ) -> CheckResult: ...
 
 
-def replay(scenario: Scenario, *, seed: int, audit: bool = False) -> None: ...
+def replay(
+    scenario: Scenario,
+    *,
+    seed: int,
+    audit: bool = False,
+    max_steps: int | None = 10_000_000,
+) -> None: ...
 
 
 @contextmanager
@@ -155,8 +162,8 @@ class World:
   cadence as `always()`). `deadline`, if given, is a **virtual duration from the call** (matching
   `run_for`'s `seconds`): if the predicate has not become true within it, `run_until` raises
   `TimeoutError`; if both become true in the same step, the predicate wins (ADR-0021). With no deadline
-  and nothing left to make progress, the existing `DeadlockError` guard applies — there is no separate
-  hang detector. Only one `run_until` may be active at a time; a nested or concurrent call raises
+  and nothing left to make progress, the existing `DeadlockError` guard applies; if tasks keep the loop
+  busy without the predicate ever holding, `max_steps` ends the run with `LivelockError`. Only one `run_until` may be active at a time; a nested or concurrent call raises
   `SeedloopError`. Useful for "run until the cluster converges".
 
 ## The network port
@@ -265,6 +272,12 @@ class SeedloopError(Exception): ...  # base for everything seedloop raises
 class DeadlockError(SeedloopError): ...  # the run is quiescent with tasks still awaiting
 
 
+class LivelockError(SeedloopError): ...  # the run used up max_steps without finishing
+
+
+class TeardownError(SeedloopError): ...  # cleanup after the scenario did not finish
+
+
 class InvariantError(SeedloopError): ...  # an always(...) invariant was violated
 
 
@@ -276,14 +289,27 @@ class EntropyLeakError(
 ): ...  # uncontrolled entropy touched under audit (carries .source)
 ```
 
-`SeedloopError`, `DeadlockError`, `InvariantError`, `BoundaryError`, and `EntropyLeakError` are all
-implemented; `EntropyLeakError` is raised by the non-determinism auditor under `check(..., audit=True)`.
+`SeedloopError`, `DeadlockError`, `LivelockError`, `TeardownError`, `InvariantError`, `BoundaryError`,
+and `EntropyLeakError` are all implemented; `EntropyLeakError` is raised by the non-determinism auditor under `check(..., audit=True)`.
 
 - **`InvariantError`** carries the invariant `name` and the virtual `time` of the violation; an
   `always(...)` property that becomes false raises it, and `check` reports it as that seed's failure.
 - **`DeadlockError`** is raised when no task can make progress and nothing is scheduled to wake one — a
   deadlock in the simulated world. seedloop raises it instead of hanging (as a real program would), so
   the deadlock surfaces as that seed's failure.
+- **`LivelockError`** is raised when a run takes more than `max_steps` loop steps (default ten million)
+  without finishing. A task that never waits, such as `while not done: await asyncio.sleep(0)`, keeps the
+  ready queue busy, so the virtual clock cannot advance and a real loop would spin; the error names the
+  virtual time and the running tasks. The limit counts the run and the two steps that follow the
+  scenario; `max_steps=None` removes it. It must be a positive `int` or `None`, otherwise `check` and
+  `replay` raise `SeedloopError` before running anything.
+- **`TeardownError`** is raised when cleanup after the scenario does not end: a task swallows
+  cancellation, or cancel handlers keep starting new tasks. Teardown cancels what is left in rounds
+  (creation order), each round limited to 100 000 steps plus 100 per task, for at most 100 rounds. If a
+  scenario failure is already in flight, that failure stays the error and the `TeardownError` becomes a
+  note on it.
+- `DeadlockError` lists up to 20 blocked tasks (creation index, coroutine, what each awaits). A
+  `sleep(math.inf)` with nothing else scheduled is a deadlock, not a wake-up at `t=inf`.
 - **`BoundaryError`** is raised when a run reaches for something outside the boundary — a real thread,
   `run_in_executor`, a subprocess, a real socket, `uvloop` — rather than letting it run nondeterminist
   ically (ADR-0002).

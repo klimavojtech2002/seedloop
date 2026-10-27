@@ -30,6 +30,23 @@ class DeadlockError(SeedloopError):
     """
 
 
+class LivelockError(SeedloopError):
+    """The run used up its step limit without finishing.
+
+    A task that keeps the ready queue busy (for example ``while not done: await sleep(0)``) stops
+    the virtual clock from advancing, so a real loop would spin and the run would never end. The
+    limit is ``max_steps`` on ``check``/``replay``.
+    """
+
+
+class TeardownError(SeedloopError):
+    """Cleanup after the scenario did not finish.
+
+    A task that swallows cancellation, or a cancel handler that keeps starting new tasks, would
+    keep teardown running for ever. It stops with this error, naming the tasks still running.
+    """
+
+
 class InvariantError(SeedloopError):
     """An ``always(...)`` invariant was violated during a run.
 
