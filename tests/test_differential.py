@@ -77,12 +77,61 @@ def _first_failure_kept(program: int, old: str, new: str) -> bool:
     )
 
 
+def _stop_in_teardown_is_not_an_error(program: int, old: str, new: str) -> bool:
+    # ADR-0025: a ``loop.stop()`` that lands while the remaining tasks are being cancelled ends one
+    # pass of the loop, not the teardown, and no longer fails the run. 0.4.0 raised ``RuntimeError``
+    # there. Only a program that stops the loop can show it, and only as ``RuntimeError`` -> ``ok``.
+    return (
+        old.split()[0] == "RuntimeError"
+        and new.split()[0] == "ok"
+        and "loop_stop" in kinds(generate(program))
+    )
+
+
+def _invariant_after_the_run_is_ignored(program: int, old: str, new: str) -> bool:
+    # ADR-0025: invariants describe the run, not the cleanup after it. A check that broke in the
+    # steps after the scenario ended the run with ``InvariantError`` in 0.4.0; it no longer does.
+    # Only a program with a check that breaks a few steps in can show it, and only as
+    # ``InvariantError`` -> ``ok``.
+    return (
+        old.split()[0] == "InvariantError"
+        and new.split()[0] == "ok"
+        and "invariant_steps" in kinds(generate(program))
+    )
+
+
+def _shielded_work_is_cancelled_in_a_later_round(program: int, old: str, new: str) -> bool:
+    # ADR-0025: teardown cancels in rounds until nothing is pending, so a task that a shielded wait
+    # (``shield``, or ``wait_for`` over one) left running is cancelled too. 0.4.0 left it pending,
+    # so the timeline gains the event for that cancellation. The outcome is the same, or the real
+    # one where 0.4.0 reported ``InvalidStateError`` for the pending task. A shorter or equal
+    # timeline, or any other change of outcome, is not this difference.
+    old_outcome, old_events = old.split()[:2]
+    new_outcome, new_events = new.split()[:2]
+    same_outcome = old_outcome == new_outcome != "InvalidStateError"
+    real_outcome_shown = old_outcome == "InvalidStateError" != new_outcome
+    return (
+        (same_outcome or real_outcome_shown)
+        and int(new_events) > int(old_events)
+        and bool({"wait_for", "shield"} & kinds(generate(program)))
+    )
+
+
 # Differences that are intended: a reason, and a test on the (oracle, candidate) result lines.
 DECLARED = [
     ("InvalidStateError hid the real outcome in 0.4.0", _oracle_hid_the_real_failure),
     (
         "the first failure is kept when several failures end a run",
         _first_failure_kept,
+    ),
+    ("a stop during teardown is no longer an error (ADR-0025)", _stop_in_teardown_is_not_an_error),
+    (
+        "an invariant that breaks after the run is ignored (ADR-0025)",
+        _invariant_after_the_run_is_ignored,
+    ),
+    (
+        "teardown cancels shielded work left running, in a later round (ADR-0025)",
+        _shielded_work_is_cancelled_in_a_later_round,
     ),
 ]
 
